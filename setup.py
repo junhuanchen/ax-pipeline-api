@@ -28,20 +28,20 @@ from pipeline import version
 print('pipeline version: ', version)
 
 setup(
-    name="ax_pipeline_api",
+    name="ax-pipeline-api",
     version=version,
     license='MIT',
-    description="A Python API For m3axpi",
+    description="A Python API For M3AXPI Pipeline",
     author="Juwan",
     author_email="junhuanchen@qq.com",
     long_description=open('README.md', 'r', encoding='UTF-8').read(),
     long_description_content_type='text/markdown',
-    url="https://github.com/junhuanchen/ax_pipeline_api",
+    url="https://github.com/junhuanchen/ax-pipeline-api",
     packages=find_packages(
 
     ),
     install_requires=[
-        
+
     ],
     classifiers=[
         "Programming Language :: Python :: 3",

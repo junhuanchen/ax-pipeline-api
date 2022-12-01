@@ -1,5 +1,5 @@
 
-version='1.0.1'
+version='1.0.3'
 
 import os
 import ctypes
@@ -7,7 +7,7 @@ import collections
 import time
 
 _source = {
-    "lib" : None,           # so 
+    "lib" : None,           # so
     "path" : None,          # so path
     "config" : None,        # so config
     "queue" : None,         # result queue
@@ -19,6 +19,13 @@ _source = {
     "ui_image" : None,      # display a image(display)
 }
 
+class _image:
+    def __init__(self, width, height, mode, data):
+        self.width = width
+        self.height = height
+        self.mode = mode
+        self.data = data
+
 def config(key, value=None):
     if value != None:
         _source[key] = value
@@ -26,15 +33,10 @@ def config(key, value=None):
             _source["ai_image"] = None
         if _source["display"] is False:
             _source["ui_image"] = None
+        if key == "ui_image":
+            _source["ui_image"] = _image(value[0], value[1], value[2], value[3])
         # print("dls", key, _source[key])
     return _source[key]
-
-class _image:
-    def __init__(self, width, height, mode, data):
-        self.width = width
-        self.height = height
-        self.mode = mode
-        self.data = data
 
 class sample_run_joint_bbox(ctypes.Structure):
     _fields_ = [
@@ -54,26 +56,21 @@ class sample_run_joint_mat(ctypes.Structure):
     _fields_ = [
         ("w", ctypes.c_int),
         ("h", ctypes.c_int),
-        ("data", ctypes.c_char_p),
+        ("data", ctypes.POINTER(ctypes.c_uint8)),
     ]
 
 class sample_run_joint_object(ctypes.Structure):
     _fields_ = [
         ("bbox", sample_run_joint_bbox),
-        ("bHasFaceLmk", ctypes.c_int),
-        ("face_landmark", sample_run_joint_point*5),
-        ("bHasPoseLmk", ctypes.c_int),
-        ("pose_landmark", sample_run_joint_point*17),
-        ("bHaseMask", ctypes.c_int),
+        ("bHasBoxVertices", ctypes.c_int),
+        ("bbox_vertices", sample_run_joint_point*4), # bbox with rotate
+        ("bHasLandmark", ctypes.c_int), # none 0 face 5 body 17 animal 20 hand 21
+        ("landmark", sample_run_joint_point*21),
+        ("bHasMask", ctypes.c_int),
         ("mYolov5Mask", sample_run_joint_mat),
         ("label", ctypes.c_int),
         ("prob", ctypes.c_float),
         ("objname", ctypes.c_char*16),
-    ]
-
-class sample_run_joint_pphumseg(ctypes.Structure):
-    _fields_ = [
-        ("mask", ctypes.c_byte*(192*192)),
     ]
 
 class sample_run_joint_results(ctypes.Structure):
@@ -81,9 +78,12 @@ class sample_run_joint_results(ctypes.Structure):
         ("nObjSize", ctypes.c_int),
         ("mObjects", sample_run_joint_object*64),
         ("bPPHumSeg", ctypes.c_int),
-        ("mPPHumSeg", sample_run_joint_pphumseg),
+        ("mPPHumSeg", sample_run_joint_mat),
+        ("bYolopv2Mask", ctypes.c_int),
+        ("mYolopv2seg", sample_run_joint_mat),
+        ("mYolopv2ll", sample_run_joint_mat),
     ]
-    
+
 '''
 typedef enum _AX_NPU_CV_FrameDataType {
     AX_NPU_CV_FDT_UNKNOWN = 0,
@@ -116,18 +116,18 @@ class AX_NPU_CV_Stride(ctypes.Structure):
         ("nW", ctypes.c_int),
         ("nC", ctypes.c_int),
     ]
-    
+
 class AX_NPU_CV_Image(ctypes.Structure):
     _fields_ = [
         ("pVir", ctypes.POINTER(ctypes.c_char)),
         ("pPhy", ctypes.c_int64),
         ("nSize", ctypes.c_int),
         ("nWidth", ctypes.c_int),
-        ("nHeight", ctypes.c_int),        
+        ("nHeight", ctypes.c_int),
         ("eDtype", ctypes.c_int),
         ("tStride", AX_NPU_CV_Stride),
     ]
-    
+
 def _result_callback(frame, result):
     res = ctypes.cast(result, ctypes.POINTER(sample_run_joint_results)).contents
     data = {}
@@ -145,36 +145,50 @@ def _result_callback(frame, result):
                 "w" : res.mObjects[i].bbox.w,
                 "h" : res.mObjects[i].bbox.h,
             }
-            if res.mObjects[i].bHasFaceLmk:
-                obj["bHasFaceLmk"] = res.mObjects[i].bHasFaceLmk
-                obj["face_landmark"] = []
-                for j in range(5):
-                    obj["face_landmark"].append({
-                        "x" : res.mObjects[i].face_landmark[j].x,
-                        "y" : res.mObjects[i].face_landmark[j].y,
+            obj["bHasBoxVertices"] = res.mObjects[i].bHasBoxVertices
+            if res.mObjects[i].bHasBoxVertices:
+                obj["bbox_vertices"] = []
+                for j in range(4):
+                    obj["bbox_vertices"].append({
+                        "x" : res.mObjects[i].bbox_vertices[j].x,
+                        "y" : res.mObjects[i].bbox_vertices[j].y,
                     })
-            if res.mObjects[i].bHasPoseLmk:
-                obj["bHasPoseLmk"] = res.mObjects[i].bHasPoseLmk
-                obj["pose_landmark"] = []
-                for j in range(17):
-                    obj["pose_landmark"].append({
-                        "x" : res.mObjects[i].pose_landmark[j].x,
-                        "y" : res.mObjects[i].pose_landmark[j].y,
+            obj["bHasLandmark"] = res.mObjects[i].bHasLandmark
+            if res.mObjects[i].bHasLandmark:
+                obj["landmark"] = []
+                for j in range(res.mObjects[i].bHasLandmark):
+                    obj["landmark"].append({
+                        "x" : res.mObjects[i].landmark[j].x,
+                        "y" : res.mObjects[i].landmark[j].y,
                     })
-            if res.mObjects[i].bHaseMask:
-                obj["bHaseMask"] = res.mObjects[i].bHaseMask
+            if res.mObjects[i].bHasMask:
+                obj["bHasMask"] = res.mObjects[i].bHasMask
                 obj["mYolov5Mask"] = {
                     "w" : res.mObjects[i].mYolov5Mask.w,
                     "h" : res.mObjects[i].mYolov5Mask.h,
                     "data" : ctypes.string_at(res.mObjects[i].mYolov5Mask.data, res.mObjects[i].mYolov5Mask.w*res.mObjects[i].mYolov5Mask.h),
                 }
             data["mObjects"].append(obj)
+    ## There is a problem taking out the mask data ##
     if res.bPPHumSeg:
         data["bPPHumSeg"] = res.bPPHumSeg
-        data["mPPHumSeg"] = []
-        for i in range(192*192):
-            data["mPPHumSeg"].append(res.mPPHumSeg.mask[i])
-        data["mPPHumSeg"] = bytes(data["mPPHumSeg"])
+        data["mPPHumSeg"] = {
+            "w" : res.mPPHumSeg.w,
+            "h" : res.mPPHumSeg.h,
+            "data" : ctypes.string_at(res.mPPHumSeg.data, res.mPPHumSeg.w*res.mPPHumSeg.h),
+        }
+    if res.bYolopv2Mask:
+        data["bYolopv2Mask"] = res.bYolopv2Mask
+        data["mYolopv2seg"] = {
+            "w" : res.mYolopv2seg.w,
+            "h" : res.mYolopv2seg.h,
+            "data" : ctypes.string_at(res.mYolopv2seg.data, res.mYolopv2seg.w*res.mYolopv2seg.h),
+        }
+        data["mYolopv2ll"] = {
+            "w" : res.mYolopv2ll.w,
+            "h" : res.mYolopv2ll.h,
+            "data" : ctypes.string_at(res.mYolopv2ll.data, res.mYolopv2ll.w*res.mYolopv2ll.h),
+        }
     if len(data):
         data['time'] = time.time()
         _source["queue"].append(data)
@@ -252,7 +266,7 @@ def load(config, maxsize=10):
         _source["lib"], _source["path"], _source["config"] = None, None, None
         _source["work"] = False
 
-def unit_test_yolov5s():
+def unit_test_yolov5s(sensor=b'0'):
 
     import threading
     def print_data(threadName, delay):
@@ -272,13 +286,13 @@ def unit_test_yolov5s():
         b'libsample_vin_ivps_joint_vo_sipy.so',
         b'-m', b'/home/models/yolov5s.joint',
         b'-p', b'/home/config/yolov5s.json',
-        b'-c', b'0',
-        
+        b'-c', sensor,
+
     ])
 
     test.join()
 
-def unit_test_ax_pose():
+def unit_test_ax_pose(sensor=b'0'):
 
     import threading
     def print_data(threadName, delay):
@@ -297,12 +311,14 @@ def unit_test_ax_pose():
     load([
         b'libsample_vin_ivps_joint_venc_rtsp_vo_sipy.so',
         b'-p', b'/home/config/ax_pose.json',
-        b'-c', b'0',
+        # b'-p', b'/home/config/hrnet_pose.json',
+        b'-c', sensor,
     ])
 
     test.join()
 
-def unit_test_yolov5s_seg():
+def unit_test_hand_pose(sensor=b'0'):
+
     import threading
     def print_data(threadName, delay):
         print("print_data 1", threadName, work())
@@ -318,15 +334,14 @@ def unit_test_yolov5s_seg():
     test.start()
 
     load([
-        b'libsample_vin_ivps_joint_vo_sipy.so',
-        b'-m', b'/home/models/yolov5s-seg.joint',
-        b'-p', b'/home/config/yolov5_seg.json',
-        b'-c', b'0',
+        b'libsample_vin_ivps_joint_venc_rtsp_vo_sipy.so',
+        b'-p', b'/home/config/hand_pose.json',
+        b'-c', sensor,
     ])
 
     test.join()
 
-def unit_test_display():
+def unit_test_display(sensor=b'0'):
     try:
         lcd_width, lcd_height = 854, 480
         from PIL import Image, ImageDraw
@@ -337,7 +352,7 @@ def unit_test_display():
         img.paste(logo, box=(854//2, 480//2), mask=None)
         r,g,b,a = img.split()
         src_argb = Image.merge("RGBA", (a,b,g,r))
-        config("ui_image", _image(854, 480, "ARGB", src_argb.tobytes()))
+        config("ui_image", (854, 480, "ARGB", src_argb.tobytes()))
         import threading
         def print_data(threadName, delay):
             print("print_data 1", threadName, work())
@@ -360,7 +375,7 @@ def unit_test_display():
                     img.paste(tmp, box=(0, 0), mask=None)
                     r,g,b,a = img.split()
                     argb = Image.merge("RGBA", (a,b,g,r)).tobytes()
-                    config("ui_image", _image(lcd_width, lcd_height, "ARGB", argb))
+                    config("ui_image", (lcd_width, lcd_height, "ARGB", argb))
             config("camera", False)
             config("hide", True)
             for i in range(200):
@@ -379,7 +394,7 @@ def unit_test_display():
                         ui.rectangle((x,y,x+w,y+h), fill=(100,0,0,255), outline=(255,0,0,255))
                         ui.text((x,y), objname, fill=(255,0,0,255))
                         ui.text((x,y+20), str(objprob), fill=(255,0,0,255))
-                    config("ui_image", _image(854, 480, "ARGB", src_argb.tobytes()))
+                    config("ui_image", (854, 480, "ARGB", src_argb.tobytes()))
             config("hide", False)
             config("display", False)
             free()
@@ -391,15 +406,44 @@ def unit_test_display():
             b'libsample_vin_ivps_joint_vo_sipy.so',
             b'-m', b'/home/models/yolov5s.joint',
             b'-p', b'/home/config/yolov5s.json',
-            b'-c', b'0',
+            b'-c', sensor,
         ])
 
         test.join()
     except Exception as e:
         print("apt install python3-pil -y")
 
+def unit_test_yolov5s_seg(sensor=b'0'):
+    import threading
+    def print_data(threadName, delay):
+        print("print_data 1", threadName, work())
+        while work():
+        # for i in range(200):
+            time.sleep(delay)
+            tmp = result()
+            if tmp:
+                print(tmp)
+        free()
+        print("print_data 2", work())
+    test = threading.Thread(target=print_data, args=("Thread-1", 0.05, ))
+    test.start()
+
+    load([
+        b'libsample_vin_ivps_joint_vo_sipy.so',
+        # b'-p', b'/home/config/pp_human_seg.json',
+        # b'-p', b'/home/config/yolo_fastbody.json',
+        # b'-p', b'/home/config/hrnet_animal_pose.json',
+        # b'-p', b'/home/config/yolopv2.json',
+        b'-m', b'/home/models/yolov5s-seg.joint',
+        b'-p', b'/home/config/yolov5_seg.json',
+        b'-c', sensor,
+    ])
+
+    test.join()
+
 if __name__ == "__main__":
     unit_test_display()
     unit_test_yolov5s()
     unit_test_ax_pose()
+    unit_test_hand_pose()
     unit_test_yolov5s_seg()
