@@ -24,22 +24,22 @@
 
 from setuptools import setup, find_packages
 
-from pipeline import version
+from ax.pipeline import version
 print('pipeline version: ', version)
 
 setup(
     name="ax-pipeline-api",
     version=version,
     license='MIT',
-    description="A Python API For M3AXPI Pipeline",
+    description="A Python API For wiki.sipeed.com/m3axpi Pipeline",
     author="Juwan",
     author_email="junhuanchen@qq.com",
     long_description=open('README.md', 'r', encoding='UTF-8').read(),
     long_description_content_type='text/markdown',
     url="https://github.com/junhuanchen/ax-pipeline-api",
-    packages=find_packages(
-
-    ),
+    packages=[
+        "ax",
+    ],
     install_requires=[
 
     ],

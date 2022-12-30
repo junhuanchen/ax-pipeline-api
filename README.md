@@ -49,7 +49,7 @@ Based on the 20221125 of the Debian11 system.
 https://user-images.githubusercontent.com/32978053/204093040-179e35d0-8bfa-4626-b4cc-46f3f148eb71.mp4
 
 ```python
-import pipeline
+from ax import pipeline
 import time
 import threading
 
@@ -88,7 +88,7 @@ https://user-images.githubusercontent.com/32978053/204444795-635299e9-89f1-4c76-
 
 
 ```python
-import pipeline
+from ax import pipeline
 import time
 import threading
 

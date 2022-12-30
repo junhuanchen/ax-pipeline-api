@@ -2,3 +2,5 @@
 build
 ax_pipeline_api.egg-info/
 dist
+tests/test_ax_pose_print.py
+__pycache__

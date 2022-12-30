@@ -1,6 +1,6 @@
 
 import time
-import pipeline
+from ax import pipeline
 from PIL import Image, ImageDraw
 lcd_width, lcd_height = 854, 480
 logo = Image.open("/home/res/logo.png")
