@@ -1,6 +1,9 @@
 ## what this ?
 
-Docs [wiki.sipeed.com/m3axpi](https://wiki.sipeed.com/m3axpi)
+[![MIT](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
+[![PyPI version](https://badge.fury.io/py/ax-pipeline-api.svg)](https://badge.fury.io/py/ax-pipeline-api)
+
+Docs at [wiki.sipeed.com/m3axpi](https://wiki.sipeed.com/m3axpi)
 
 ## how to use
 
@@ -31,6 +34,20 @@ Based on the 20221125 of the Debian11 system.
     ])
 ```
 
+- Package with many inputs and outputs
+
+```bash
+libsample_h264_ivps_joint_vo_sipy.so            # input h264 video to ivps joint output screen vo
+libsample_v4l2_user_ivps_joint_vo_sipy.so       # input v4l2 /dev/videoX to ivps joint output screen vo
+libsample_rtsp_ivps_joint_sipy.so               # input video from rtsp to ivps joint
+libsample_rtsp_ivps_joint_rtsp_vo_sipy.so       # input video from rtsp to ivps joint output rtsp and screen vo
+libsample_vin_ivps_joint_vo_sipy.so             # input mipi sensor to ivps joint output screen vo
+libsample_vin_ivps_joint_venc_rtsp_sipy.so      # input mipi sensor to ivps joint output rtsp
+libsample_vin_ivps_joint_venc_rtsp_vo_sipy.so   # input mipi sensor to ivps joint output rtsp and screen vo
+libsample_vin_ivps_joint_vo_h265_sipy.so        # input mipi sensor to ivps joint output screen vo and save h265 video file.
+libsample_vin_joint_sipy.so                     # input mipi sensor to ivps joint
+```
+
 ### change ai model
 
 ```python
@@ -40,6 +57,19 @@ Based on the 20221125 of the Debian11 system.
         b'-p', b'/home/config/yolov5s_face.json',
         b'-c', b'0',
     ])
+```
+
+- In-system models on /home/config.
+
+```bash
+ax_person_det.json          license_plate_recognition.json  yolov5s_face.json
+ax_pose.json                nanodet.json                    yolov5s_face_recognition.json
+ax_pose_yolov5s.json        palm_hand_detection.json        yolov5s_license_plate.json
+hand_pose.json              pp_human_seg.json               yolov6.json
+hand_pose_yolov7_palm.json  yolo_fastbody.json              yolov7.json
+hrnet_animal_pose.json      yolopv2.json                    yolov7_face.json
+hrnet_pose.json             yolov5_seg.json                 yolov7_palm_hand.json
+hrnet_pose_ax_det.json      yolov5s.json                    yolox.json
 ```
 
 ## run demo code
