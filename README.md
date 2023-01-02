@@ -9,7 +9,7 @@ Docs at [wiki.sipeed.com/m3axpi](https://wiki.sipeed.com/m3axpi)
 
 Based on the 20221125 of the Debian11 system.
 
-- `pip3 install ax-pipline-api -U`
+- `pip3 install ax-pipeline-api -U`
 
 ### change sensor
 
