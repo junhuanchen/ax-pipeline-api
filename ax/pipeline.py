@@ -297,7 +297,6 @@ def unit_test_yolov5s(sensor=b'0'):
 
     load([
         b'libsample_vin_ivps_joint_vo_sipy.so',
-        b'-m', b'/home/models/yolov5s.joint',
         b'-p', b'/home/config/yolov5s.json',
         b'-c', sensor,
 
@@ -423,7 +422,6 @@ def unit_test_display(sensor=b'2'):
 
         load([
             b'libsample_vin_ivps_joint_vo_sipy.so',
-            b'-m', b'/home/models/yolov5s.joint',
             b'-p', b'/home/config/yolov5s.json',
             b'-c', sensor,
         ])
@@ -455,7 +453,6 @@ def unit_test_yolov5s_seg(sensor=b'2'):
         # b'-p', b'/home/config/yolopv2.json',
         # b'-p', b'/home/config/license_plate_recognition.json',
         # b'-p', b'/home/config/yolov5s_face_recognition.json',
-        b'-m', b'/home/models/yolov5s-seg.joint',
         b'-p', b'/home/config/yolov5_seg.json',
         b'-c', sensor,
     ])
