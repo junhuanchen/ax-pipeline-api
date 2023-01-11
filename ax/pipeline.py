@@ -1,5 +1,5 @@
 
-version='1.0.5'
+version='1.0.7'
 
 import os
 import ctypes
@@ -38,7 +38,7 @@ def config(key, value=None):
         # print("dls", key, _source[key])
     return _source[key]
 
-class sample_run_joint_bbox(ctypes.Structure):
+class libaxdl_bbox_t(ctypes.Structure):
     _fields_ = [
         ("x", ctypes.c_float),
         ("y", ctypes.c_float),
@@ -46,43 +46,45 @@ class sample_run_joint_bbox(ctypes.Structure):
         ("h", ctypes.c_float),
     ]
 
-class sample_run_joint_point(ctypes.Structure):
+class libaxdl_point_t(ctypes.Structure):
     _fields_ = [
         ("x", ctypes.c_float),
         ("y", ctypes.c_float),
     ]
 
-class sample_run_joint_mat(ctypes.Structure):
+class libaxdl_mat_t(ctypes.Structure):
     _fields_ = [
         ("w", ctypes.c_int),
         ("h", ctypes.c_int),
         ("data", ctypes.POINTER(ctypes.c_uint8)),
     ]
 
-class sample_run_joint_object(ctypes.Structure):
+class libaxdl_object_t(ctypes.Structure):
     _fields_ = [
-        ("bbox", sample_run_joint_bbox),
+        ("bbox", libaxdl_bbox_t),
         ("bHasBoxVertices", ctypes.c_int),
-        ("bbox_vertices", sample_run_joint_point*4), # bbox with rotate
-        ("bHasLandmark", ctypes.c_int), # none 0 face 5 body 17 animal 20 hand 21
-        ("landmark", sample_run_joint_point*21),
+        ("bbox_vertices", libaxdl_point_t*4), # bbox with rotate
+        ("nLandmark", ctypes.c_int), # none 0 face 5 body 17 animal 20 hand 21
+        ("landmark", ctypes.POINTER(libaxdl_point_t)),
         ("bHasMask", ctypes.c_int),
-        ("mYolov5Mask", sample_run_joint_mat),
+        ("mYolov5Mask", libaxdl_mat_t),
+        ("bHasFaceFeat", ctypes.c_int),
+        ("mFaceFeat", libaxdl_mat_t),
         ("label", ctypes.c_int),
         ("prob", ctypes.c_float),
         ("objname", ctypes.c_char*20),
     ]
 
-class sample_run_joint_results(ctypes.Structure):
+class libaxdl_results_t(ctypes.Structure):
     _fields_ = [
         ("mModelType", ctypes.c_int),
         ("nObjSize", ctypes.c_int),
-        ("mObjects", sample_run_joint_object*64),
+        ("mObjects", libaxdl_object_t*64),
         ("bPPHumSeg", ctypes.c_int),
-        ("mPPHumSeg", sample_run_joint_mat),
+        ("mPPHumSeg", libaxdl_mat_t),
         ("bYolopv2Mask", ctypes.c_int),
-        ("mYolopv2seg", sample_run_joint_mat),
-        ("mYolopv2ll", sample_run_joint_mat),
+        ("mYolopv2seg", libaxdl_mat_t),
+        ("mYolopv2ll", libaxdl_mat_t),
         ("niFps", ctypes.c_int),
         ("noFps", ctypes.c_int),
     ]
@@ -132,7 +134,7 @@ class AX_NPU_CV_Image(ctypes.Structure):
     ]
 
 def _result_callback(frame, result):
-    res = ctypes.cast(result, ctypes.POINTER(sample_run_joint_results)).contents
+    res = ctypes.cast(result, ctypes.POINTER(libaxdl_results_t)).contents
     data = {}
     if res.nObjSize:
         data["mModelType"] = res.mModelType
@@ -157,10 +159,10 @@ def _result_callback(frame, result):
                         "x" : res.mObjects[i].bbox_vertices[j].x,
                         "y" : res.mObjects[i].bbox_vertices[j].y,
                     })
-            obj["bHasLandmark"] = res.mObjects[i].bHasLandmark
-            if res.mObjects[i].bHasLandmark:
+            obj["nLandmark"] = res.mObjects[i].nLandmark
+            if res.mObjects[i].nLandmark:
                 obj["landmark"] = []
-                for j in range(res.mObjects[i].bHasLandmark):
+                for j in range(res.mObjects[i].nLandmark):
                     obj["landmark"].append({
                         "x" : res.mObjects[i].landmark[j].x,
                         "y" : res.mObjects[i].landmark[j].y,
@@ -171,6 +173,13 @@ def _result_callback(frame, result):
                     "w" : res.mObjects[i].mYolov5Mask.w,
                     "h" : res.mObjects[i].mYolov5Mask.h,
                     "data" : ctypes.string_at(res.mObjects[i].mYolov5Mask.data, res.mObjects[i].mYolov5Mask.w*res.mObjects[i].mYolov5Mask.h),
+                }
+            if res.mObjects[i].bHasFaceFeat:
+                obj["bHasFaceFeat"] = res.mObjects[i].bHasFaceFeat
+                obj["mFaceFeat"] = {
+                    "w" : res.mObjects[i].mFaceFeat.w,
+                    "h" : res.mObjects[i].mFaceFeat.h,
+                    "data" : ctypes.string_at(res.mObjects[i].mFaceFeat.data, res.mObjects[i].mFaceFeat.w*res.mObjects[i].mFaceFeat.h),
                 }
             data["mObjects"].append(obj)
     ## There is a problem taking out the mask data ##
@@ -241,7 +250,7 @@ def load(config, maxsize=10):
         CB_RESULT = ctypes.CFUNCTYPE(
             ctypes.c_int,
             ctypes.c_void_p,
-            ctypes.POINTER(sample_run_joint_results),
+            ctypes.POINTER(libaxdl_results_t),
         )
         cb_result = CB_RESULT(_result_callback)
         _source["lib"].register_result_callback.argtypes = [CB_RESULT]
@@ -345,7 +354,7 @@ def unit_test_hand_pose(sensor=b'0'):
 
     test.join()
 
-def unit_test_display(sensor=b'0'):
+def unit_test_display(sensor=b'2'):
     try:
         lcd_width, lcd_height = 854, 480
         from PIL import Image, ImageDraw
@@ -423,7 +432,7 @@ def unit_test_display(sensor=b'0'):
     except Exception as e:
         print("apt install python3-pil -y")
 
-def unit_test_yolov5s_seg(sensor=b'0'):
+def unit_test_yolov5s_seg(sensor=b'2'):
     import threading
     def print_data(threadName, delay):
         print("print_data 1", threadName, work())

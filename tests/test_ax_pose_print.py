@@ -33,10 +33,9 @@ def print_data(threadName, delay):
                     w = i['bbox']['w'] * lcd_width
                     h = i['bbox']['h'] * lcd_height
                     ui.rectangle((x,y,x+w,y+h), fill=(100,0,0,255), outline=(255,0,0,255))
-                if i["bHasLandmark"]:
-                    for p in i["landmark"]:
-                        x, y = (int(p['x']*lcd_width), int(p['y']*lcd_height))
-                        ui.rectangle((x-2,y-2,x+2, y+2), outline=(255,0,0,255))
+                for p in i["landmark"]:
+                    x, y = (int(p['x']*lcd_width), int(p['y']*lcd_height))
+                    ui.rectangle((x-4,y-4,x+4, y+4), outline=(255,0,0,255))
         pipeline.config("ui_image", (lcd_width, lcd_height, "ABGR", argb.tobytes()))
     print("print_data 2", pipeline.work())
 
