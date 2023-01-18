@@ -1,23 +1,66 @@
 
-version='1.0.5'
+version='1.0.7'
 
 import os
 import ctypes
 import collections
 import time
+import threading
 
 _source = {
     "lib" : None,           # so
     "path" : None,          # so path
     "config" : None,        # so config
     "queue" : None,         # result queue
-    "work" : False,         # True is free
+    "thread" : None,        # thread for work
     "hide" : False,         # show pipeline draw result
     "camera" : False,       # allow camera ai input for debug
     "ai_image" : None,      # camera ai image(input)
     "display" : True,       # allow display for user_ui
     "ui_image" : None,      # display a image(display)
 }
+
+class pipeline_event(threading.Thread):
+    def __init__(self, _source):
+        threading.Thread.__init__(self)
+        self._source = _source
+    def run(self):
+        config = self._source["config"]
+        self._source["lib"] = ctypes.CDLL(self._source["path"])
+        CB_RESULT = ctypes.CFUNCTYPE(
+            ctypes.c_int,
+            ctypes.c_void_p,
+            ctypes.POINTER(libaxdl_results_t),
+        )
+        cb_result = CB_RESULT(_result_callback)
+        self._source["lib"].register_result_callback.argtypes = [CB_RESULT]
+        self._source["lib"].register_result_callback.restype = ctypes.c_int
+        ret = self._source["lib"].register_result_callback(cb_result)
+        CB_DISPLAY = ctypes.CFUNCTYPE(
+            ctypes.c_int,
+            ctypes.c_int,
+            ctypes.c_int,
+            ctypes.c_int,
+            ctypes.POINTER(ctypes.c_char_p),
+        )
+        cb_display = CB_DISPLAY(_display_callback)
+        self._source["lib"].register_display_callback.argtypes = [CB_DISPLAY]
+        self._source["lib"].register_display_callback.restype = ctypes.c_int
+        ret = self._source["lib"].register_display_callback(cb_display)
+        main_msg = (ctypes.c_char_p * len(config))()
+        for i in range(len(config)):
+            main_msg[i] = bytes(config[i], encoding="iso-8859-1")
+        self._source["lib"].main.argtypes = ctypes.c_int, ctypes.POINTER(ctypes.c_char_p)
+        self._source["lib"].main.restype = None
+        ret = self._source["lib"].main(len(main_msg), main_msg)
+        self._source["queue"].clear()
+        self._source["lib"], self._source["path"], self._source["config"] = None, None, None
+        self._source["thread"] = None
+        self._source["hide"] = False
+        self._source["camera"] = False
+        self._source["ai_image"] = None
+        self._source["display"] = True
+        self._source["ui_image"] = None
 
 class _image:
     def __init__(self, width, height, mode, data):
@@ -34,11 +77,11 @@ def config(key, value=None):
         if _source["display"] is False:
             _source["ui_image"] = None
         if key == "ui_image":
-            _source["ui_image"] = _image(value[0], value[1], value[2], value[3])
+            _source[key] = _image(value[0], value[1], value[2], value[3])
         # print("dls", key, _source[key])
     return _source[key]
 
-class sample_run_joint_bbox(ctypes.Structure):
+class libaxdl_bbox_t(ctypes.Structure):
     _fields_ = [
         ("x", ctypes.c_float),
         ("y", ctypes.c_float),
@@ -46,43 +89,47 @@ class sample_run_joint_bbox(ctypes.Structure):
         ("h", ctypes.c_float),
     ]
 
-class sample_run_joint_point(ctypes.Structure):
+class libaxdl_point_t(ctypes.Structure):
     _fields_ = [
         ("x", ctypes.c_float),
         ("y", ctypes.c_float),
     ]
 
-class sample_run_joint_mat(ctypes.Structure):
+class libaxdl_mat_t(ctypes.Structure):
     _fields_ = [
         ("w", ctypes.c_int),
         ("h", ctypes.c_int),
         ("data", ctypes.POINTER(ctypes.c_uint8)),
     ]
 
-class sample_run_joint_object(ctypes.Structure):
+class libaxdl_object_t(ctypes.Structure):
     _fields_ = [
-        ("bbox", sample_run_joint_bbox),
+        ("bbox", libaxdl_bbox_t),
         ("bHasBoxVertices", ctypes.c_int),
-        ("bbox_vertices", sample_run_joint_point*4), # bbox with rotate
-        ("bHasLandmark", ctypes.c_int), # none 0 face 5 body 17 animal 20 hand 21
-        ("landmark", sample_run_joint_point*21),
+        ("bbox_vertices", libaxdl_point_t*4), # bbox with rotate
+        ("nLandmark", ctypes.c_int), # none 0 face 5 body 17 animal 20 hand 21
+        ("landmark", ctypes.POINTER(libaxdl_point_t)),
         ("bHasMask", ctypes.c_int),
-        ("mYolov5Mask", sample_run_joint_mat),
+        ("mYolov5Mask", libaxdl_mat_t),
+        ("bHasFaceFeat", ctypes.c_int),
+        ("mFaceFeat", libaxdl_mat_t),
         ("label", ctypes.c_int),
         ("prob", ctypes.c_float),
         ("objname", ctypes.c_char*20),
     ]
 
-class sample_run_joint_results(ctypes.Structure):
+class libaxdl_results_t(ctypes.Structure):
     _fields_ = [
         ("mModelType", ctypes.c_int),
         ("nObjSize", ctypes.c_int),
-        ("mObjects", sample_run_joint_object*64),
+        ("mObjects", libaxdl_object_t*64),
         ("bPPHumSeg", ctypes.c_int),
-        ("mPPHumSeg", sample_run_joint_mat),
+        ("mPPHumSeg", libaxdl_mat_t),
         ("bYolopv2Mask", ctypes.c_int),
-        ("mYolopv2seg", sample_run_joint_mat),
-        ("mYolopv2ll", sample_run_joint_mat),
+        ("mYolopv2seg", libaxdl_mat_t),
+        ("mYolopv2ll", libaxdl_mat_t),
+        ("nCrowdCount", ctypes.c_int),
+        ("mCrowdCountPts", ctypes.POINTER(libaxdl_point_t)),
         ("niFps", ctypes.c_int),
         ("noFps", ctypes.c_int),
     ]
@@ -132,11 +179,10 @@ class AX_NPU_CV_Image(ctypes.Structure):
     ]
 
 def _result_callback(frame, result):
-    res = ctypes.cast(result, ctypes.POINTER(sample_run_joint_results)).contents
+    # print("result_callback", frame, result)
+    res = ctypes.cast(result, ctypes.POINTER(libaxdl_results_t)).contents
     data = {}
     if res.nObjSize:
-        data["mModelType"] = res.mModelType
-        data["nObjSize"] = res.nObjSize
         data["mObjects"] = []
         for i in range(res.nObjSize):
             obj = {}
@@ -157,10 +203,10 @@ def _result_callback(frame, result):
                         "x" : res.mObjects[i].bbox_vertices[j].x,
                         "y" : res.mObjects[i].bbox_vertices[j].y,
                     })
-            obj["bHasLandmark"] = res.mObjects[i].bHasLandmark
-            if res.mObjects[i].bHasLandmark:
+            obj["nLandmark"] = res.mObjects[i].nLandmark
+            if res.mObjects[i].nLandmark:
                 obj["landmark"] = []
-                for j in range(res.mObjects[i].bHasLandmark):
+                for j in range(res.mObjects[i].nLandmark):
                     obj["landmark"].append({
                         "x" : res.mObjects[i].landmark[j].x,
                         "y" : res.mObjects[i].landmark[j].y,
@@ -172,7 +218,15 @@ def _result_callback(frame, result):
                     "h" : res.mObjects[i].mYolov5Mask.h,
                     "data" : ctypes.string_at(res.mObjects[i].mYolov5Mask.data, res.mObjects[i].mYolov5Mask.w*res.mObjects[i].mYolov5Mask.h),
                 }
+            if res.mObjects[i].bHasFaceFeat:
+                obj["bHasFaceFeat"] = res.mObjects[i].bHasFaceFeat
+                obj["mFaceFeat"] = {
+                    "w" : res.mObjects[i].mFaceFeat.w,
+                    "h" : res.mObjects[i].mFaceFeat.h,
+                    "data" : ctypes.string_at(res.mObjects[i].mFaceFeat.data, res.mObjects[i].mFaceFeat.w*res.mObjects[i].mFaceFeat.h),
+                }
             data["mObjects"].append(obj)
+        data["nObjSize"] = res.nObjSize
     ## There is a problem taking out the mask data ##
     if res.bPPHumSeg:
         data["bPPHumSeg"] = res.bPPHumSeg
@@ -193,7 +247,16 @@ def _result_callback(frame, result):
             "h" : res.mYolopv2ll.h,
             "data" : ctypes.string_at(res.mYolopv2ll.data, res.mYolopv2ll.w*res.mYolopv2ll.h),
         }
+    if res.nCrowdCount:
+        data["nCrowdCount"] = res.nCrowdCount
+        data["mCrowdCountPts"] = []
+        for i in range(res.nCrowdCount):
+            data["mCrowdCountPts"].append({
+                "x" : res.mCrowdCountPts[i].x,
+                "y" : res.mCrowdCountPts[i].y,
+            })
     if len(data):
+        data["mModelType"] = res.mModelType
         data['time'] = time.time()
         _source["queue"].append(data)
         # print(data)
@@ -208,265 +271,217 @@ def _result_callback(frame, result):
 def _display_callback(height, width, mode, data):
     if _source["display"]:
         img = _source["ui_image"]
-        if img and height == img.height and width == img.width:
-            # print(height, width, mode)
-            # print(img.height, img.width, img.mode)
+        if isinstance(img, _image) and height == img.height and width == img.width:
             tmp = ctypes.cast(data, ctypes.POINTER(ctypes.c_char_p))
             buf = bytearray(img.data)
             ptr = (ctypes.c_char * len(buf)).from_buffer(buf)
             ctypes.memmove(tmp.contents, ptr, len(buf))
-            # _source["image"] = None
     return _source["hide"]
 
 def work():
-    return _source["work"]
+    return _source["thread"].is_alive() if _source["thread"] else False
 
 def result():
-    if len(_source["queue"]):
+    if _source["queue"] and len(_source["queue"]):
         return _source["queue"].popleft()
     return None
 
 def free():
-    if _source["work"] == True:
+    if _source["thread"]:
         _source["lib"].__sigExit.argtypes = [ctypes.c_int]
         _source["lib"].__sigExit.restype = None
         ret = _source["lib"].__sigExit(ctypes.c_int(0))
+        _source["thread"].join()
 
 def load(config, maxsize=10):
-    if _source["work"] == False:
+    if _source["thread"] == None:
         _source["config"] = config
         _source["queue"] = collections.deque(maxlen=maxsize)
-        _source["path"] = os.path.join(os.path.dirname(__file__), "lib", str(config[0], encoding="iso-8859-1"))
-        _source["lib"] = ctypes.CDLL(_source["path"])
-        CB_RESULT = ctypes.CFUNCTYPE(
-            ctypes.c_int,
-            ctypes.c_void_p,
-            ctypes.POINTER(sample_run_joint_results),
-        )
-        cb_result = CB_RESULT(_result_callback)
-        _source["lib"].register_result_callback.argtypes = [CB_RESULT]
-        _source["lib"].register_result_callback.restype = ctypes.c_int
-        ret = _source["lib"].register_result_callback(cb_result)
-        CB_DISPLAY = ctypes.CFUNCTYPE(
-            ctypes.c_int,
-            ctypes.c_int,
-            ctypes.c_int,
-            ctypes.c_int,
-            ctypes.POINTER(ctypes.c_char_p),
-        )
-        cb_display = CB_DISPLAY(_display_callback)
-        _source["lib"].register_display_callback.argtypes = [CB_DISPLAY]
-        _source["lib"].register_display_callback.restype = ctypes.c_int
-        ret = _source["lib"].register_display_callback(cb_display)
-        main_msg = (ctypes.c_char_p * len(config))()
-        for i in range(len(config)):
-            main_msg[i] = config[i]
-        _source["lib"].main.argtypes = ctypes.c_int, ctypes.POINTER(ctypes.c_char_p)
-        _source["lib"].main.restype = None
+        _source["path"] = os.path.join(os.path.dirname(__file__), "lib", config[0])
         # print("main: ", _source)
-        _source["work"] = True
-        ret = _source["lib"].main(len(main_msg), main_msg)
-        _source["queue"].clear()
-        _source["lib"], _source["path"], _source["config"] = None, None, None
-        _source["work"] = False
+        _source["thread"] = pipeline_event(_source)
+        _source["thread"].start()
 
-def unit_test_yolov5s(sensor=b'0'):
-
-    import threading
-    def print_data(threadName, delay):
-        print("print_data 1", threadName, work())
-        # while work():
-        for i in range(200):
-            time.sleep(delay)
-            tmp = result()
-            if tmp:
-                print(tmp)
-        free()
-        print("print_data 2", work())
-    test = threading.Thread(target=print_data, args=("Thread-1", 0.05, ))
-    test.start()
+def unit_test_yolov5s(loadso='libsample_vin_ivps_joint_venc_rtsp_vo_sipy.so', sensor='2'):
 
     load([
-        b'libsample_vin_ivps_joint_vo_sipy.so',
-        b'-m', b'/home/models/yolov5s.joint',
-        b'-p', b'/home/config/yolov5s.json',
-        b'-c', sensor,
-
+        loadso,
+        '-p', '/home/config/yolov5s.json',
+        '-c', sensor,
     ])
+    for i in range(500):
+        time.sleep(0.01)
+        tmp = result()
+        if tmp and tmp['nObjSize']:
+            for i in tmp['mObjects']:
+                print(i)
+    free()
+    load([
+        loadso,
+        '-p', '/home/config/yolov5s_face.json',
+        '-c', sensor,
+    ])
+    for i in range(500):
+        time.sleep(0.01)
+        tmp = result()
+        if tmp and tmp['nObjSize']:
+            for i in tmp['mObjects']:
+                print(i)
+    free()
 
-    test.join()
-
-def unit_test_ax_pose(sensor=b'0'):
-
-    import threading
-    def print_data(threadName, delay):
-        print("print_data 1", threadName, work())
-        # while work():
-        for i in range(200):
-            time.sleep(delay)
-            tmp = result()
-            if tmp:
-                print(tmp)
-        free()
-        print("print_data 2", work())
-    test = threading.Thread(target=print_data, args=("Thread-1", 0.05, ))
-    test.start()
+def unit_test_ax_pose(loadso='libsample_vin_ivps_joint_venc_rtsp_vo_sipy.so', sensor='2'):
 
     load([
-        b'libsample_vin_ivps_joint_venc_rtsp_vo_sipy.so',
-        b'-p', b'/home/config/ax_pose.json',
-        # b'-p', b'/home/config/hrnet_pose.json',
-        b'-c', sensor,
+        loadso,
+        '-p', '/home/config/ax_pose.json',
+        '-c', sensor,
     ])
+    for i in range(500):
+        time.sleep(0.01)
+        tmp = result()
+        if tmp and tmp['nObjSize']:
+            for i in tmp['mObjects']:
+                print(i)
+    free()
+    load([
+        loadso,
+        '-p', '/home/config/hrnet_pose.json',
+        '-c', sensor,
+    ])
+    for i in range(500):
+        time.sleep(0.01)
+        tmp = result()
+        if tmp and tmp['nObjSize']:
+            for i in tmp['mObjects']:
+                print(i)
+    free()
 
-    test.join()
-
-def unit_test_hand_pose(sensor=b'0'):
-
-    import threading
-    def print_data(threadName, delay):
-        print("print_data 1", threadName, work())
-        # while work():
-        for i in range(400):
-            time.sleep(delay)
-            tmp = result()
-            if tmp:
-                print(tmp)
-        free()
-        print("print_data 2", work())
-    test = threading.Thread(target=print_data, args=("Thread-1", 0.05, ))
-    test.start()
+def unit_test_hand_pose(loadso='libsample_vin_ivps_joint_venc_rtsp_vo_sipy.so', sensor='2'):
 
     load([
-        b'libsample_vin_ivps_joint_venc_rtsp_vo_sipy.so',
-        b'-p', b'/home/config/hand_pose.json',
-        b'-c', sensor,
+        loadso,
+        '-p', '/home/config/hand_pose.json',
+        '-c', sensor,
+    ])
+    for i in range(500):
+        time.sleep(0.01)
+        tmp = result()
+        if tmp and tmp['nObjSize']:
+            for i in tmp['mObjects']:
+                print(i)
+    free()
+    load([
+        loadso,
+        '-p', '/home/config/hand_pose_yolov7_palm.json',
+        '-c', sensor,
+    ])
+    for i in range(500):
+        time.sleep(0.01)
+        tmp = result()
+        if tmp and tmp['nObjSize']:
+            for i in tmp['mObjects']:
+                print(i)
+    free()
+
+def unit_test_display(loadso='libsample_vin_ivps_joint_venc_rtsp_vo_sipy.so', sensor='2'):
+
+    load([
+        loadso,
+        # '-p', '/home/config/pp_human_seg.json',
+        # '-p', '/home/config/yolo_fastbody.json',
+        # '-p', '/home/config/hrnet_animal_pose.json',
+        # '-p', '/home/config/yolopv2.json',
+        # '-p', '/home/config/license_plate_recognition.json',
+        # '-p', '/home/config/yolov5s_face_recognition.json',
+        '-p', '/home/config/yolov5s.json',
+        '-c', sensor,
     ])
 
-    test.join()
+    lcd_width, lcd_height = 854, 480
+    from PIL import Image, ImageDraw
+    logo = Image.open("/home/res/logo.png")
+    img = Image.new('RGBA', (lcd_width, lcd_height), (255,0,0,200))
+    ui = ImageDraw.ImageDraw(img)
+    ui.rectangle((54,40,800,400), fill=(0,0,0,0), outline=(0,0,255,100), width=100)
+    img.paste(logo, box=(lcd_width//2, lcd_height//2), mask=None)
+    r,g,b,a = img.split()
+    src_argb = Image.merge("RGBA", (a,b,g,r))
+    config("ui_image", (lcd_width, lcd_height, "ARGB", src_argb.tobytes()))
 
-def unit_test_display(sensor=b'0'):
-    try:
-        lcd_width, lcd_height = 854, 480
-        from PIL import Image, ImageDraw
-        logo = Image.open("/home/res/logo.png")
-        img = Image.new('RGBA', (lcd_width, lcd_height), (255,0,0,200))
-        ui = ImageDraw.ImageDraw(img)
-        ui.rectangle((54,40,800,400), fill=(0,0,0,0), outline=(0,0,255,100), width=100)
-        img.paste(logo, box=(lcd_width//2, lcd_height//2), mask=None)
-        r,g,b,a = img.split()
-        src_argb = Image.merge("RGBA", (a,b,g,r))
-        config("ui_image", (lcd_width, lcd_height, "ARGB", src_argb.tobytes()))
-        import threading
-        def print_data(threadName, delay):
-            print("print_data 1", threadName, work())
-            # while work():
-            config("camera", False)
-            for i in range(150):
-                time.sleep(delay)
-                tmp = result()
-                if tmp:
-                    print(tmp)
-            config("camera", True)
-            for i in range(50):
-                time.sleep(delay)
-                tmp = result()
-                if tmp:
-                    print(tmp)
-                ai = config("ai_image")
-                if ai and ai.mode == "RGB":
-                    tmp = Image.frombytes("RGB", (ai.width, ai.height), ai.data)
-                    tmp.thumbnail((ai.width // 2, ai.height // 2))
-                    img.paste(tmp, box=(0, 0), mask=None)
-                    r,g,b,a = img.split()
-                    src_argb = Image.merge("RGBA", (a,b,g,r))
-                    config("ui_image", (lcd_width, lcd_height, "ARGB", src_argb.tobytes()))
-            config("camera", False)
-            config("hide", True)
-            ui = ImageDraw.ImageDraw(img)
-            ui.rectangle((0,0,lcd_width, lcd_height), fill=(0,0,0,0), outline=(0,255,0,100), width=100)
-            img.paste(logo, box=(lcd_width//2, lcd_height//2), mask=None)
+    config("camera", False)
+    for i in range(500):
+        time.sleep(0.01)
+        tmp = result()
+        if tmp:
+            print(tmp)
+    config("camera", True)
+    for i in range(500):
+        time.sleep(0.001)
+        tmp = result()
+        if tmp:
+            print(tmp)
+        ai = config("ai_image")
+        if ai and ai.mode == "RGB":
+            tmp = Image.frombytes("RGB", (ai.width, ai.height), ai.data)
+            tmp.thumbnail((ai.width // 2, ai.height // 2))
+            img.paste(tmp, box=(0, 0), mask=None)
             r,g,b,a = img.split()
             src_argb = Image.merge("RGBA", (a,b,g,r))
-            for i in range(200):
-                time.sleep(delay)
-                tmp = result()
-                if tmp and tmp['nObjSize']:
-                    src_argb = Image.merge("RGBA", (a,b,g,r))
-                    ui = ImageDraw.ImageDraw(src_argb)
-                    for i in tmp['mObjects']:
-                        x = i['bbox']['x'] * lcd_width
-                        y = i['bbox']['y'] * lcd_height
-                        w = i['bbox']['w'] * lcd_width
-                        h = i['bbox']['h'] * lcd_height
-                        objname = i['objname']
-                        objprob = i['prob']
-                        ui.rectangle((x,y,x+w,y+h), fill=(100,0,0,255), outline=(255,0,0,255))
-                        ui.text((x,y), objname, fill=(255,0,0,255))
-                        ui.text((x,y+20), str(objprob), fill=(255,0,0,255))
-                    config("ui_image", (lcd_width, lcd_height, "ARGB", src_argb.tobytes()))
-            config("hide", False)
-            config("display", False)
-            free()
-            print("print_data 2", work())
-        test = threading.Thread(target=print_data, args=("Thread-1", 0.05, ))
-        test.start()
+            config("ui_image", (lcd_width, lcd_height, "ARGB", src_argb.tobytes()))
+    config("camera", False)
+    config("hide", True)
+    ui = ImageDraw.ImageDraw(img)
+    ui.rectangle((0,0,lcd_width, lcd_height), fill=(0,0,0,0), outline=(0,255,0,100), width=100)
+    img.paste(logo, box=(lcd_width//2, lcd_height//2), mask=None)
+    r,g,b,a = img.split()
+    src_argb = Image.merge("RGBA", (a,b,g,r))
+    for i in range(500):
+        tmp = result()
+        if tmp and tmp['nObjSize']:
+            src_argb = Image.merge("RGBA", (a,b,g,r))
+            ui = ImageDraw.ImageDraw(src_argb)
+            for i in tmp['mObjects']:
+                x = i['bbox']['x'] * lcd_width
+                y = i['bbox']['y'] * lcd_height
+                w = i['bbox']['w'] * lcd_width
+                h = i['bbox']['h'] * lcd_height
+                objname = i['objname']
+                objprob = i['prob']
+                ui.rectangle((x,y,x+w,y+h), fill=(100,0,0,255), outline=(255,0,0,255))
+                ui.text((x,y), objname, fill=(255,0,0,255))
+                ui.text((x,y+20), str(objprob), fill=(255,0,0,255))
+            config("ui_image", (lcd_width, lcd_height, "ARGB", src_argb.tobytes()))
+    config("hide", False)
+    config("display", False)
+    free()
 
-        load([
-            b'libsample_vin_ivps_joint_vo_sipy.so',
-            b'-m', b'/home/models/yolov5s.joint',
-            b'-p', b'/home/config/yolov5s.json',
-            b'-c', sensor,
-        ])
-
-        test.join()
-    except Exception as e:
-        print("apt install python3-pil -y")
-
-def unit_test_yolov5s_seg(sensor=b'0'):
-    import threading
-    def print_data(threadName, delay):
-        print("print_data 1", threadName, work())
-        while work():
-        # for i in range(200):
-            time.sleep(delay)
-            tmp = result()
-            if tmp:
-                print(tmp)
-        free()
-        print("print_data 2", work())
-    test = threading.Thread(target=print_data, args=("Thread-1", 0.05, ))
-    test.start()
+def unit_test_yolov5s_seg(loadso='libsample_vin_ivps_joint_venc_rtsp_vo_sipy.so', sensor='2'):
 
     load([
-        b'libsample_vin_ivps_joint_vo_sipy.so',
-        # b'-p', b'/home/config/pp_human_seg.json',
-        # b'-p', b'/home/config/yolo_fastbody.json',
-        # b'-p', b'/home/config/hrnet_animal_pose.json',
-        # b'-p', b'/home/config/yolopv2.json',
-        # b'-p', b'/home/config/license_plate_recognition.json',
-        # b'-p', b'/home/config/yolov5s_face_recognition.json',
-        b'-m', b'/home/models/yolov5s-seg.joint',
-        b'-p', b'/home/config/yolov5_seg.json',
-        b'-c', sensor,
+        loadso,
+        # '-p', '/home/config/pp_human_seg.json',
+        # '-p', '/home/config/yolo_fastbody.json',
+        # '-p', '/home/config/hrnet_animal_pose.json',
+        # '-p', '/home/config/yolopv2.json',
+        # '-p', '/home/config/license_plate_recognition.json',
+        # '-p', '/home/config/yolov5s_face_recognition.json',
+        '-p', '/home/config/yolov5_seg.json',
+        '-c', sensor,
     ])
+    for i in range(500):
+        time.sleep(0.01)
+        tmp = result()
+        if tmp and tmp['nObjSize']:
+            for i in tmp['mObjects']:
+                print(i)
+    free()
 
-    test.join()
-
-'''
-ax_person_det.json          license_plate_recognition.json  yolov5s_face.json
-ax_pose.json                nanodet.json                    yolov5s_face_recognition.json
-ax_pose_yolov5s.json        palm_hand_detection.json        yolov5s_license_plate.json
-hand_pose.json              pp_human_seg.json               yolov6.json
-hand_pose_yolov7_palm.json  yolo_fastbody.json              yolov7.json
-hrnet_animal_pose.json      yolopv2.json                    yolov7_face.json
-hrnet_pose.json             yolov5_seg.json                 yolov7_palm_hand.json
-hrnet_pose_ax_det.json      yolov5s.json                    yolox.json
-'''
-
-if __name__ == "__main__":
+def unit_test():
     unit_test_display()
-    unit_test_yolov5s()
     unit_test_ax_pose()
+    unit_test_yolov5s()
     unit_test_hand_pose()
     unit_test_yolov5s_seg()
+
+if __name__ == "__main__":
+    unit_test()
