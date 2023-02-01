@@ -2,15 +2,21 @@
 import time
 from ax import pipeline
 from PIL import Image, ImageDraw
+
+# ready sipeed logo canvas
 lcd_width, lcd_height = 854, 480
-logo = Image.open("/home/res/logo.png")
+
 img = Image.new('RGBA', (lcd_width, lcd_height), (255,0,0,200))
 ui = ImageDraw.ImageDraw(img)
 ui.rectangle((20,20,lcd_width-20,lcd_height-20), fill=(0,0,0,0), outline=(0,0,255,100), width=20)
+
+logo = Image.open("/home/res/logo.png")
 img.paste(logo, box=(lcd_width-logo.size[0], lcd_height-logo.size[1]), mask=None)
-r,g,b,a = img.split()
-canvas_argb = Image.merge("RGBA", (a,b,g,r))
-# ready sipeed logo canvas
+
+def rgba2argb(rgba):
+    r,g,b,a = rgba.split()
+    return Image.merge("RGBA", (a,b,g,r))
+canvas_argb = rgba2argb(img)
 
 pipeline.load([
     'libsample_vin_ivps_joint_vo_sipy.so',
@@ -39,6 +45,6 @@ while pipeline.work():
             for p in i["landmark"]:
                 x, y = (int(p['x']*lcd_width), int(p['y']*lcd_height))
                 ui.rectangle((x-4,y-4,x+4, y+4), outline=(255,0,0,255))
-    pipeline.config("ui_image", (lcd_width, lcd_height, "ABGR", argb.tobytes()))
+    pipeline.config("ui_image", (lcd_width, lcd_height, "ARGB", argb.tobytes()))
 
 pipeline.free()
