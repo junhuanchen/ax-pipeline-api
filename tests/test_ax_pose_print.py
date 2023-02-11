@@ -47,4 +47,4 @@ while pipeline.work():
                 ui.rectangle((x-4,y-4,x+4, y+4), outline=(255,0,0,255))
     pipeline.config("ui_image", (lcd_width, lcd_height, "ARGB", argb.tobytes()))
 
-pipeline.free()
+pipeline.drop()

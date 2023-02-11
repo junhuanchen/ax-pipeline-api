@@ -9,6 +9,53 @@ This project is a Python implementation of [ax-pipeline](https://github.com/AXER
 
 Based on AX620A Debian11 system. Docs at [wiki.sipeed.com/m3axpi](https://wiki.sipeed.com/m3axpi)
 
+## new code (1.0.8)
+
+>  It need update debian11(202202+) for pillow ImageFont(freetype).
+
+
+
+```python
+
+import m3axpi
+
+from PIL import Image, ImageDraw, ImageFont
+
+lcd_width, lcd_height, lcd_channel = 854, 480, 4
+
+fnt = ImageFont.truetype("/home/res/sans.ttf", 20)
+img = Image.new('RGBA', (lcd_width, lcd_height), (255,0,0,200))
+ui = ImageDraw.ImageDraw(img)
+ui.rectangle((20, 20, lcd_width-20, lcd_height-20), fill=(0,0,0,0), outline=(0,0,255,100), width=20)
+
+logo = Image.open("/home/res/logo.png")
+img.paste(logo, box=(lcd_width-logo.size[0], lcd_height-logo.size[1]), mask=None)
+
+while True:
+    rgba = img.copy()
+
+    tmp = m3axpi.capture()
+    rgb = Image.frombuffer("RGB", (tmp[1], tmp[0]), tmp[3])
+    rgba.paste(rgb, box=(0, 0), mask=None) ## camera 320x180 paste 854x480
+
+    res = m3axpi.forward()
+    if 'nObjSize' in res:
+        ui = ImageDraw.ImageDraw(rgba)
+        ui.text((0, 0), "fps:%02d" % (res['niFps']), font=fnt)
+        for obj in res['mObjects']:
+            x, y, w, h = int(obj['bbox'][0]*lcd_width), int(obj['bbox'][1]*lcd_height), int(obj['bbox'][2]*lcd_width), int(obj['bbox'][3]*lcd_height)
+            ui.rectangle((x,y,x+w,y+h), fill=(255,0,0,100), outline=(255,0,0,255))
+            ui.text((x, y), "%s:%02d" % (obj['objname'], obj['prob']*100), font=fnt)
+            rgba.paste(logo, box=(x+w-logo.size[1], y+h-logo.size[1]), mask=None)
+
+    m3axpi.display([lcd_height, lcd_width, lcd_channel, rgba.tobytes()])
+
+```
+
+### test code
+
+- [tests/test_m3axpi.py](tests/test_m3axpi.py)
+
 ## run code
 
 ### yolov5s
@@ -34,8 +81,8 @@ while pipeline.work():
             objname, objprob = i['objname'], i['prob']
             print(objname, objprob, x, y, w, h)
         # if tmp['nObjSize'] > 10: # try exit
-        #     pipeline.free()
-pipeline.free()
+        #     pipeline.drop()
+pipeline.drop()
 
 ```
 
@@ -60,8 +107,8 @@ while pipeline.work():
         for i in tmp['mObjects']:
             print(i)
         # if tmp['nObjSize'] > 10: # try exit
-        #     pipeline.free()
-pipeline.free()
+        #     pipeline.drop()
+pipeline.drop()
 
 ```
 
@@ -140,6 +187,7 @@ hrnet_pose_ax_det.json	    yolov5s_face.json
 ### pypi
 
 - python3 setup.py sdist
-- python3 setup.py build && pip3 install .
+- python3 setup.py build && cp build/lib*/m3axpi.*.so m3axpi.so
+- rm -rf build && pip3 uninstall ax-pipeline-api -y && python3 setup.py build && pip3 install .
 > pip3 install twine
 - twine upload dist/* --verbose

@@ -286,7 +286,7 @@ def result():
         return _source["queue"].popleft()
     return None
 
-def free():
+def drop():
     if _source["thread"]:
         _source["lib"].__sigExit.argtypes = [ctypes.c_int]
         _source["lib"].__sigExit.restype = None
@@ -315,7 +315,7 @@ def unit_test_yolov5s(loadso='libsample_vin_ivps_joint_venc_rtsp_vo_sipy.so', se
         if tmp and tmp['nObjSize']:
             for i in tmp['mObjects']:
                 print(i)
-    free()
+    drop()
     load([
         loadso,
         '-p', '/home/config/yolov5s_face.json',
@@ -327,7 +327,7 @@ def unit_test_yolov5s(loadso='libsample_vin_ivps_joint_venc_rtsp_vo_sipy.so', se
         if tmp and tmp['nObjSize']:
             for i in tmp['mObjects']:
                 print(i)
-    free()
+    drop()
 
 def unit_test_ax_pose(loadso='libsample_vin_ivps_joint_venc_rtsp_vo_sipy.so', sensor='2'):
 
@@ -342,7 +342,7 @@ def unit_test_ax_pose(loadso='libsample_vin_ivps_joint_venc_rtsp_vo_sipy.so', se
         if tmp and tmp['nObjSize']:
             for i in tmp['mObjects']:
                 print(i)
-    free()
+    drop()
     load([
         loadso,
         '-p', '/home/config/hrnet_pose.json',
@@ -354,7 +354,7 @@ def unit_test_ax_pose(loadso='libsample_vin_ivps_joint_venc_rtsp_vo_sipy.so', se
         if tmp and tmp['nObjSize']:
             for i in tmp['mObjects']:
                 print(i)
-    free()
+    drop()
 
 def unit_test_hand_pose(loadso='libsample_vin_ivps_joint_venc_rtsp_vo_sipy.so', sensor='2'):
 
@@ -369,7 +369,7 @@ def unit_test_hand_pose(loadso='libsample_vin_ivps_joint_venc_rtsp_vo_sipy.so', 
         if tmp and tmp['nObjSize']:
             for i in tmp['mObjects']:
                 print(i)
-    free()
+    drop()
     load([
         loadso,
         '-p', '/home/config/hand_pose_yolov7_palm.json',
@@ -381,7 +381,7 @@ def unit_test_hand_pose(loadso='libsample_vin_ivps_joint_venc_rtsp_vo_sipy.so', 
         if tmp and tmp['nObjSize']:
             for i in tmp['mObjects']:
                 print(i)
-    free()
+    drop()
 
 def unit_test_display(loadso='libsample_vin_ivps_joint_venc_rtsp_vo_sipy.so', sensor='2'):
 
@@ -453,7 +453,7 @@ def unit_test_display(loadso='libsample_vin_ivps_joint_venc_rtsp_vo_sipy.so', se
             config("ui_image", (lcd_width, lcd_height, "ARGB", src_argb.tobytes()))
     config("hide", False)
     config("display", False)
-    free()
+    drop()
 
 def unit_test_yolov5s_seg(loadso='libsample_vin_ivps_joint_venc_rtsp_vo_sipy.so', sensor='2'):
 
@@ -474,7 +474,7 @@ def unit_test_yolov5s_seg(loadso='libsample_vin_ivps_joint_venc_rtsp_vo_sipy.so'
         if tmp and tmp['nObjSize']:
             for i in tmp['mObjects']:
                 print(i)
-    free()
+    drop()
 
 def unit_test():
     unit_test_display()

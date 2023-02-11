@@ -22,10 +22,33 @@
 # THE SOFTWARE.
 ##
 
-from setuptools import setup, find_packages
+from pybind11 import get_cmake_dir
+from pybind11.setup_helpers import Pybind11Extension, build_ext
+from setuptools import setup
 
 from ax.pipeline import version
 print('pipeline version: ', version)
+
+
+ext_modules = [
+    Pybind11Extension("m3axpi",
+
+            include_dirs=[
+                '/opt/include', '/usr/include/opencv4/', '/usr/local/include/opencv4/',
+            ],
+            sources= ["src/m3axpi.cpp"],
+            libraries=[
+                "opencv_videoio", "opencv_highgui", "opencv_core", "opencv_imgproc", "opencv_imgcodecs", "opencv_freetype", "opencv_freetype", "sample_vin_ivps_joint_vo_sipy"
+            ],
+            extra_compile_args=['-std=c++11', '-std=gnu++11'],
+            extra_link_args=[
+                "-Lax/lib",
+                "-L/usr/local/lib/python3.9/dist-packages/ax/lib/",
+                "-Wl,-rpath=/usr/local/lib/python3.9/dist-packages/ax/lib/",
+                "-Wno-format-security",
+            ],
+        ),
+]
 
 setup(
     name="ax-pipeline-api",
@@ -43,6 +66,7 @@ setup(
     install_requires=[
 
     ],
+    ext_modules=ext_modules,
     classifiers=[
         "Programming Language :: Python :: 3",
     ],
