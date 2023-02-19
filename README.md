@@ -9,15 +9,27 @@ This project is a Python implementation of [ax-pipeline](https://github.com/AXER
 
 Based on AX620A Debian11 system. Docs at [wiki.sipeed.com/m3axpi](https://wiki.sipeed.com/m3axpi)
 
-## new code (1.0.8)
+Python apis for pybind11 and ctypes are implemented here, but please do not mix them as there is only one screen and one camera.
 
->  It need update debian11(202202+) for pillow ImageFont(freetype).
+- pybind11 has a friendlier usage
 
+- ctypes have a more stable effect
 
+## new pybind11 code (1.0.9+)
+
+>  It need update debian11(202202+) for pillow ImageFont(freetype). (`sudo apt install libxft-dev && pip3 uninstall pillow -y && pip3 install pillow --no-cache-dir -U`)
+
+https://user-images.githubusercontent.com/32978053/218361047-6a72b294-cd66-4f0e-8bed-152a6661d458.mp4
+
+> The new API is still in an unstable state, so don't mind if you encounter strange bugs.
 
 ```python
 
 import m3axpi
+
+# m3axpi.camera(SysCase=0) # switch os04a10
+# m3axpi.camera(SysCase=2) # default gc4653
+# m3axpi.load("/home/config/yolov8.json")
 
 from PIL import Image, ImageDraw, ImageFont
 
@@ -52,11 +64,9 @@ while True:
 
 ```
 
-### test code
-
 - [tests/test_m3axpi.py](tests/test_m3axpi.py)
 
-## run code
+## old ctypes code
 
 ### yolov5s
 
