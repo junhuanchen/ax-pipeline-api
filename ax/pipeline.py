@@ -1,5 +1,5 @@
 
-version='1.0.9'
+version='1.1.0'
 
 import os
 import ctypes
@@ -14,10 +14,10 @@ _source = {
     "queue" : None,         # result queue
     "thread" : None,        # thread for work
     "hide" : False,         # show pipeline draw result
-    "camera" : False,       # allow camera ai input for debug
-    "ai_image" : None,      # camera ai image(input)
-    "display" : True,       # allow display for user_ui
-    "ui_image" : None,      # display a image(display)
+    "input" : False,       # allow camera ai input for debug
+    "camera" : None,      # camera ai image(input)
+    "output" : True,       # allow display for user_ui
+    "display" : None,      # display a image(display)
 }
 
 class pipeline_event(threading.Thread):
@@ -30,7 +30,7 @@ class pipeline_event(threading.Thread):
         CB_RESULT = ctypes.CFUNCTYPE(
             ctypes.c_int,
             ctypes.c_void_p,
-            ctypes.POINTER(libaxdl_results_t),
+            ctypes.POINTER(axdl_results_t),
         )
         cb_result = CB_RESULT(_result_callback)
         self._source["lib"].register_result_callback.argtypes = [CB_RESULT]
@@ -57,10 +57,10 @@ class pipeline_event(threading.Thread):
         self._source["lib"], self._source["path"], self._source["config"] = None, None, None
         self._source["thread"] = None
         self._source["hide"] = False
-        self._source["camera"] = False
-        self._source["ai_image"] = None
-        self._source["display"] = True
-        self._source["ui_image"] = None
+        self._source["input"] = False
+        self._source["camera"] = None
+        self._source["output"] = True
+        self._source["display"] = None
 
 class _image:
     def __init__(self, width, height, mode, data):
@@ -72,16 +72,16 @@ class _image:
 def config(key, value=None):
     if value != None:
         _source[key] = value
-        if _source["camera"] is False:
-            _source["ai_image"] = None
-        if _source["display"] is False:
-            _source["ui_image"] = None
-        if key == "ui_image":
+        if _source["input"] is False:
+            _source["camera"] = None
+        if _source["output"] is False:
+            _source["display"] = None
+        if key == "display":
             _source[key] = _image(value[0], value[1], value[2], value[3])
         # print("dls", key, _source[key])
     return _source[key]
 
-class libaxdl_bbox_t(ctypes.Structure):
+class axdl_bbox_t(ctypes.Structure):
     _fields_ = [
         ("x", ctypes.c_float),
         ("y", ctypes.c_float),
@@ -89,98 +89,67 @@ class libaxdl_bbox_t(ctypes.Structure):
         ("h", ctypes.c_float),
     ]
 
-class libaxdl_point_t(ctypes.Structure):
+class axdl_point_t(ctypes.Structure):
     _fields_ = [
         ("x", ctypes.c_float),
         ("y", ctypes.c_float),
     ]
 
-class libaxdl_mat_t(ctypes.Structure):
+class axdl_mat_t(ctypes.Structure):
     _fields_ = [
         ("w", ctypes.c_int),
         ("h", ctypes.c_int),
         ("data", ctypes.POINTER(ctypes.c_uint8)),
     ]
 
-class libaxdl_object_t(ctypes.Structure):
+class axdl_object_t(ctypes.Structure):
     _fields_ = [
-        ("bbox", libaxdl_bbox_t),
+        ("bbox", axdl_bbox_t),
         ("bHasBoxVertices", ctypes.c_int),
-        ("bbox_vertices", libaxdl_point_t*4), # bbox with rotate
+        ("bbox_vertices", axdl_point_t*4), # bbox with rotate
         ("nLandmark", ctypes.c_int), # none 0 face 5 body 17 animal 20 hand 21
-        ("landmark", ctypes.POINTER(libaxdl_point_t)),
+        ("landmark", ctypes.POINTER(axdl_point_t)),
         ("bHasMask", ctypes.c_int),
-        ("mYolov5Mask", libaxdl_mat_t),
+        ("mYolov5Mask", axdl_mat_t),
         ("bHasFaceFeat", ctypes.c_int),
-        ("mFaceFeat", libaxdl_mat_t),
+        ("mFaceFeat", axdl_mat_t),
         ("label", ctypes.c_int),
         ("prob", ctypes.c_float),
         ("objname", ctypes.c_char*20),
     ]
 
-class libaxdl_results_t(ctypes.Structure):
+class axdl_results_t(ctypes.Structure):
     _fields_ = [
         ("mModelType", ctypes.c_int),
         ("nObjSize", ctypes.c_int),
-        ("mObjects", libaxdl_object_t*64),
+        ("mObjects", axdl_object_t*64),
         ("bPPHumSeg", ctypes.c_int),
-        ("mPPHumSeg", libaxdl_mat_t),
+        ("mPPHumSeg", axdl_mat_t),
         ("bYolopv2Mask", ctypes.c_int),
-        ("mYolopv2seg", libaxdl_mat_t),
-        ("mYolopv2ll", libaxdl_mat_t),
+        ("mYolopv2seg", axdl_mat_t),
+        ("mYolopv2ll", axdl_mat_t),
         ("nCrowdCount", ctypes.c_int),
-        ("mCrowdCountPts", ctypes.POINTER(libaxdl_point_t)),
+        ("mCrowdCountPts", ctypes.POINTER(axdl_point_t)),
         ("niFps", ctypes.c_int),
         ("noFps", ctypes.c_int),
     ]
 
-'''
-typedef enum _AX_NPU_CV_FrameDataType {
-    AX_NPU_CV_FDT_UNKNOWN = 0,
-    AX_NPU_CV_FDT_RAW10 = 1,
-    AX_NPU_CV_FDT_RAW12 = 2,
-    AX_NPU_CV_FDT_RAW16 = 3,
-    AX_NPU_CV_FDT_NV12 = 4,
-    AX_NPU_CV_FDT_NV21 = 5,
-    AX_NPU_CV_FDT_RGB = 6,
-    AX_NPU_CV_FDT_BGR = 7,
-    AX_NPU_CV_FDT_RGBA = 8,
-    AX_NPU_CV_FDT_GRAY = 9,
-    AX_NPU_CV_FDT_YUV444 = 10,
-    AX_NPU_CV_FDT_UV = 11,
-    AX_NPU_CV_FDT_YUV422 = 12,
-    AX_NPU_CV_FDT_BAYER_RGGB = 13,
-    AX_NPU_CV_FDT_BAYER_GBRG = 14,
-    AX_NPU_CV_FDT_BAYER_GRBG = 15,
-    AX_NPU_CV_FDT_BAYER_BGGR = 16,
-    AX_NPU_CV_FDT_UYVY = 17,
-    AX_NPU_CV_FDT_YUYV = 18,
-    AX_NPU_CV_FDT_YUV420_LEGACY = 19,
-    AX_NPU_CV_FDT_LAB = 20,
-} AX_NPU_CV_FrameDataType;
-'''
-
-class AX_NPU_CV_Stride(ctypes.Structure):
+class axdl_image_t(ctypes.Structure):
     _fields_ = [
-        ("nH", ctypes.c_int),
-        ("nW", ctypes.c_int),
-        ("nC", ctypes.c_int),
-    ]
-
-class AX_NPU_CV_Image(ctypes.Structure):
-    _fields_ = [
-        ("pVir", ctypes.POINTER(ctypes.c_char)),
-        ("pPhy", ctypes.c_int64),
-        ("nSize", ctypes.c_int),
-        ("nWidth", ctypes.c_int),
-        ("nHeight", ctypes.c_int),
+        ("pPhy", ctypes.c_ulonglong),
+        ("pVir", ctypes.c_void_p),
+        ("nSize", ctypes.c_uint),
+        ("nWidth", ctypes.c_uint),
+        ("nHeight", ctypes.c_uint),
         ("eDtype", ctypes.c_int),
-        ("tStride", AX_NPU_CV_Stride),
+        ("tStride_H", ctypes.c_int),
+        ("tStride_W", ctypes.c_int),
+        ("tStride_C", ctypes.c_int),
     ]
 
 def _result_callback(frame, result):
     # print("result_callback", frame, result)
-    res = ctypes.cast(result, ctypes.POINTER(libaxdl_results_t)).contents
+    res = ctypes.cast(result, ctypes.POINTER(axdl_results_t)).contents
     data = {}
     if res.nObjSize:
         data["mObjects"] = []
@@ -195,16 +164,16 @@ def _result_callback(frame, result):
                 "w" : res.mObjects[i].bbox.w,
                 "h" : res.mObjects[i].bbox.h,
             }
-            obj["bHasBoxVertices"] = res.mObjects[i].bHasBoxVertices
             if res.mObjects[i].bHasBoxVertices:
+                obj["bHasBoxVertices"] = res.mObjects[i].bHasBoxVertices
                 obj["bbox_vertices"] = []
                 for j in range(4):
                     obj["bbox_vertices"].append({
                         "x" : res.mObjects[i].bbox_vertices[j].x,
                         "y" : res.mObjects[i].bbox_vertices[j].y,
                     })
-            obj["nLandmark"] = res.mObjects[i].nLandmark
             if res.mObjects[i].nLandmark:
+                obj["nLandmark"] = res.mObjects[i].nLandmark
                 obj["landmark"] = []
                 for j in range(res.mObjects[i].nLandmark):
                     obj["landmark"].append({
@@ -260,17 +229,17 @@ def _result_callback(frame, result):
         data['time'] = time.time()
         _source["queue"].append(data)
         # print(data)
-    if _source["camera"]:
-        img = ctypes.cast(frame, ctypes.POINTER(AX_NPU_CV_Image)).contents
-        if img.eDtype == 7: # is rgb camera
-            _source["ai_image"] = _image(img.nWidth, img.nHeight, "RGB", ctypes.string_at(img.pVir, img.nWidth * img.nHeight * 3))
+    if _source["input"]:
+        img = ctypes.cast(frame, ctypes.POINTER(axdl_image_t)).contents
+        if img.eDtype > 2: # is axdl_color_space_bgr(3) or axdl_color_space_rgb(4)
+            _source["camera"] = _image(img.nWidth, img.nHeight, "RGB", ctypes.string_at(img.pVir, img.nWidth * img.nHeight * 3))
         else:
-            _source["camera"] = False
+            _source["input"] = False
     return 0
 
 def _display_callback(height, width, mode, data):
-    if _source["display"]:
-        img = _source["ui_image"]
+    if _source["output"]:
+        img = _source["display"]
         if isinstance(img, _image) and height == img.height and width == img.width:
             tmp = ctypes.cast(data, ctypes.POINTER(ctypes.c_char_p))
             buf = bytearray(img.data)
@@ -309,7 +278,7 @@ def unit_test_yolov5s(loadso='libsample_vin_ivps_joint_venc_rtsp_vo_sipy.so', se
         '-p', '/home/config/yolov5s.json',
         '-c', sensor,
     ])
-    for i in range(500):
+    for i in range(300):
         time.sleep(0.01)
         tmp = result()
         if tmp and tmp['nObjSize']:
@@ -321,7 +290,7 @@ def unit_test_yolov5s(loadso='libsample_vin_ivps_joint_venc_rtsp_vo_sipy.so', se
         '-p', '/home/config/yolov5s_face.json',
         '-c', sensor,
     ])
-    for i in range(500):
+    for i in range(300):
         time.sleep(0.01)
         tmp = result()
         if tmp and tmp['nObjSize']:
@@ -336,7 +305,7 @@ def unit_test_ax_pose(loadso='libsample_vin_ivps_joint_venc_rtsp_vo_sipy.so', se
         '-p', '/home/config/ax_pose.json',
         '-c', sensor,
     ])
-    for i in range(500):
+    for i in range(300):
         time.sleep(0.01)
         tmp = result()
         if tmp and tmp['nObjSize']:
@@ -348,7 +317,7 @@ def unit_test_ax_pose(loadso='libsample_vin_ivps_joint_venc_rtsp_vo_sipy.so', se
         '-p', '/home/config/hrnet_pose.json',
         '-c', sensor,
     ])
-    for i in range(500):
+    for i in range(300):
         time.sleep(0.01)
         tmp = result()
         if tmp and tmp['nObjSize']:
@@ -363,7 +332,7 @@ def unit_test_hand_pose(loadso='libsample_vin_ivps_joint_venc_rtsp_vo_sipy.so', 
         '-p', '/home/config/hand_pose.json',
         '-c', sensor,
     ])
-    for i in range(500):
+    for i in range(300):
         time.sleep(0.01)
         tmp = result()
         if tmp and tmp['nObjSize']:
@@ -375,7 +344,7 @@ def unit_test_hand_pose(loadso='libsample_vin_ivps_joint_venc_rtsp_vo_sipy.so', 
         '-p', '/home/config/hand_pose_yolov7_palm.json',
         '-c', sensor,
     ])
-    for i in range(500):
+    for i in range(300):
         time.sleep(0.01)
         tmp = result()
         if tmp and tmp['nObjSize']:
@@ -400,46 +369,41 @@ def unit_test_display(loadso='libsample_vin_ivps_joint_venc_rtsp_vo_sipy.so', se
     lcd_width, lcd_height = 854, 480
     from PIL import Image, ImageDraw
     logo = Image.open("/home/res/logo.png")
-    img = Image.new('RGBA', (lcd_width, lcd_height), (255,0,0,200))
+    img = Image.new('RGBA', (lcd_width, lcd_height))
     ui = ImageDraw.ImageDraw(img)
-    ui.rectangle((54,40,800,400), fill=(0,0,0,0), outline=(0,0,255,100), width=100)
+    ui.rectangle((54,40,800,400), fill=(0,0,0,0), outline=(255,0,0,100), width=100)
     img.paste(logo, box=(lcd_width//2, lcd_height//2), mask=None)
-    r,g,b,a = img.split()
-    src_argb = Image.merge("RGBA", (a,b,g,r))
-    config("ui_image", (lcd_width, lcd_height, "ARGB", src_argb.tobytes()))
-
-    config("camera", False)
-    for i in range(500):
-        time.sleep(0.01)
-        tmp = result()
-        if tmp:
-            print(tmp)
-    config("camera", True)
-    for i in range(500):
-        time.sleep(0.001)
-        tmp = result()
-        if tmp:
-            print(tmp)
-        ai = config("ai_image")
-        if ai and ai.mode == "RGB":
-            tmp = Image.frombytes("RGB", (ai.width, ai.height), ai.data)
-            tmp.thumbnail((ai.width // 2, ai.height // 2))
-            img.paste(tmp, box=(0, 0), mask=None)
-            r,g,b,a = img.split()
-            src_argb = Image.merge("RGBA", (a,b,g,r))
-            config("ui_image", (lcd_width, lcd_height, "ARGB", src_argb.tobytes()))
-    config("camera", False)
+    config("display", (lcd_width, lcd_height, "rgba", img.tobytes()))
+    # config("input", False)
+    # for i in range(300):
+    #     time.sleep(0.01)
+    #     tmp = result()
+    #     if tmp:
+    #         print(tmp)
+    # config("input", True)
+    # for i in range(100):
+    #     time.sleep(0.001)
+    #     tmp = result()
+    #     if tmp:
+    #         print(tmp)
+    #     ai = config("camera")
+    #     if ai and ai.mode == "RGB":
+    #         rgba = img.copy()
+    #         tmp = Image.frombytes("RGB", (ai.width, ai.height), ai.data)
+    #         tmp.thumbnail((ai.width // 2, ai.height // 2))
+    #         rgba.paste(tmp, box=(0, 0), mask=None)
+    #         config("display", (lcd_width, lcd_height, "rgba", rgba.tobytes()))
+    config("input", False)
     config("hide", True)
     ui = ImageDraw.ImageDraw(img)
     ui.rectangle((0,0,lcd_width, lcd_height), fill=(0,0,0,0), outline=(0,255,0,100), width=100)
     img.paste(logo, box=(lcd_width//2, lcd_height//2), mask=None)
-    r,g,b,a = img.split()
-    src_argb = Image.merge("RGBA", (a,b,g,r))
-    for i in range(500):
+    for i in range(300):
+        time.sleep(0.01)
         tmp = result()
         if tmp and tmp['nObjSize']:
-            src_argb = Image.merge("RGBA", (a,b,g,r))
-            ui = ImageDraw.ImageDraw(src_argb)
+            rgba = img.copy()
+            ui = ImageDraw.ImageDraw(rgba)
             for i in tmp['mObjects']:
                 x = i['bbox']['x'] * lcd_width
                 y = i['bbox']['y'] * lcd_height
@@ -447,12 +411,12 @@ def unit_test_display(loadso='libsample_vin_ivps_joint_venc_rtsp_vo_sipy.so', se
                 h = i['bbox']['h'] * lcd_height
                 objname = i['objname']
                 objprob = i['prob']
-                ui.rectangle((x,y,x+w,y+h), fill=(100,0,0,255), outline=(255,0,0,255))
-                ui.text((x,y), objname, fill=(255,0,0,255))
-                ui.text((x,y+20), str(objprob), fill=(255,0,0,255))
-            config("ui_image", (lcd_width, lcd_height, "ARGB", src_argb.tobytes()))
+                ui.rectangle((x,y,x+w,y+h), fill=(255,0,0,100), outline=(0,0,255,100))
+                ui.text((x,y), objname, fill=(255,0,0,100))
+                ui.text((x,y+20), str(objprob), fill=(255,0,0,100))
+            config("display", (lcd_width, lcd_height, "rgba", rgba.tobytes()))
     config("hide", False)
-    config("display", False)
+    config("output", False)
     drop()
 
 def unit_test_yolov5s_seg(loadso='libsample_vin_ivps_joint_venc_rtsp_vo_sipy.so', sensor='2'):
@@ -468,7 +432,7 @@ def unit_test_yolov5s_seg(loadso='libsample_vin_ivps_joint_venc_rtsp_vo_sipy.so'
         '-p', '/home/config/yolov5_seg.json',
         '-c', sensor,
     ])
-    for i in range(500):
+    for i in range(300):
         time.sleep(0.01)
         tmp = result()
         if tmp and tmp['nObjSize']:
@@ -479,9 +443,9 @@ def unit_test_yolov5s_seg(loadso='libsample_vin_ivps_joint_venc_rtsp_vo_sipy.so'
 def unit_test():
     unit_test_display()
     unit_test_ax_pose()
-    unit_test_yolov5s()
+    unit_test_yolov5s(loadso='libsample_vin_ivps_joint_vo_sipy.so')
     unit_test_hand_pose()
-    unit_test_yolov5s_seg()
+    unit_test_yolov5s_seg(loadso='libsample_vin_ivps_joint_vo_sipy.so')
 
 if __name__ == "__main__":
     unit_test()

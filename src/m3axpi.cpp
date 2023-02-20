@@ -3,7 +3,7 @@
 
 #include <opencv2/opencv.hpp>
 
-#include "libaxdl/include/c_api.h"
+#include "axdl/include/c_api.h"
 
 #include "common/common_func.h"
 #include "common/common_pipeline.h"
@@ -43,7 +43,7 @@ struct _g_m3axpi_
     static pthread_mutex_t g_forward_mutex;
     static pthread_mutex_t g_capture_mutex;
     static cv::Mat g_capture, g_display;
-    static std::queue<libaxdl_results_t> g_result_forward;
+    static std::queue<axdl_results_t> g_result_forward;
     static pipeline_t pipelines[4];
     static int bRunJoint, bRunState;
     static void *gNpuModels;
@@ -201,7 +201,7 @@ struct _g_m3axpi_
             // 销毁pipeline
             {
                 drop();
-                
+
                 pipeline_t &pipe0 = pipelines[0];
                 destory_pipeline(&pipe0);
 
@@ -257,10 +257,10 @@ struct _g_m3axpi_
         if (bRunJoint == 0 && std::ifstream(config_file.c_str()).good()) {
 
             gNpuModels = NULL;
-            
+
             AX_S32 s32Ret = 0;
-            
-            s32Ret = libaxdl_parse_param_init((char *)config_file.c_str(), &gNpuModels);
+
+            s32Ret = axdl_parse_param_init((char *)config_file.c_str(), &gNpuModels);
 
             if (s32Ret != 0)
             {
@@ -270,7 +270,7 @@ struct _g_m3axpi_
             }
             else
             {
-                s32Ret = libaxdl_get_ivps_width_height(gNpuModels, (char *)config_file.c_str(), &SAMPLE_IVPS_ALGO_WIDTH, &SAMPLE_IVPS_ALGO_HEIGHT);
+                s32Ret = axdl_get_ivps_width_height(gNpuModels, (char *)config_file.c_str(), &SAMPLE_IVPS_ALGO_WIDTH, &SAMPLE_IVPS_ALGO_HEIGHT);
                 ALOGI("IVPS AI channel width=%d heighr=%d", SAMPLE_IVPS_ALGO_WIDTH, SAMPLE_IVPS_ALGO_HEIGHT);
                 bRunJoint = 1;
             }
@@ -282,7 +282,7 @@ struct _g_m3axpi_
                 config2.n_ivps_fps = 60;
                 config2.n_ivps_width = SAMPLE_IVPS_ALGO_WIDTH;
                 config2.n_ivps_height = SAMPLE_IVPS_ALGO_HEIGHT;
-                if (libaxdl_get_model_type(gNpuModels) != MT_SEG_PPHUMSEG)
+                if (axdl_get_model_type(gNpuModels) != MT_SEG_PPHUMSEG)
                 {
                     config2.b_letterbox = 1;
                 }
@@ -294,15 +294,15 @@ struct _g_m3axpi_
 
             if (gNpuModels && bRunJoint)
             {
-                switch (libaxdl_get_color_space(gNpuModels))
+                switch (axdl_get_color_space(gNpuModels))
                 {
-                case AX_FORMAT_RGB888:
+                case axdl_color_space_rgb:
                     pipe2.m_output_type = po_buff_rgb;
                     break;
-                case AX_FORMAT_BGR888:
+                case axdl_color_space_bgr:
                     pipe2.m_output_type = po_buff_bgr;
                     break;
-                case AX_YUV420_SEMIPLANAR:
+                case axdl_color_space_nv12:
                 default:
                     pipe2.m_output_type = po_buff_nv12;
                     break;
@@ -334,14 +334,14 @@ struct _g_m3axpi_
     void drop()
     {
         if (bRunJoint) {
-            
+
             if (bRunJoint > 1) {
 
                 pipelines[2].output_func = NULL;
                 destory_pipeline(&pipelines[2]);
-                
+
                 if (gNpuModels) {
-                    libaxdl_deinit(&gNpuModels);
+                    axdl_deinit(&gNpuModels);
                     gNpuModels = NULL;
                 }
             }
@@ -386,18 +386,30 @@ struct _g_m3axpi_
     {
         if (bRunJoint)
         {
-            static libaxdl_results_t mResults;
-            AX_NPU_CV_Image tSrcFrame = {0};
-
-            tSrcFrame.eDtype = (AX_NPU_CV_FrameDataType)buff->d_type;
+            static axdl_results_t mResults;
+            axdl_image_t tSrcFrame = {0};
+            switch (buff->d_type)
+            {
+                case po_buff_nv12:
+                    tSrcFrame.eDtype = axdl_color_space_nv12;
+                    break;
+                case po_buff_bgr:
+                    tSrcFrame.eDtype = axdl_color_space_bgr;
+                    break;
+                case po_buff_rgb:
+                    tSrcFrame.eDtype = axdl_color_space_rgb;
+                    break;
+                default:
+                    break;
+            }
             tSrcFrame.nWidth = buff->n_width;
             tSrcFrame.nHeight = buff->n_height;
             tSrcFrame.pVir = (unsigned char *)buff->p_vir;
             tSrcFrame.pPhy = buff->p_phy;
-            tSrcFrame.tStride.nW = buff->n_stride;
+            tSrcFrame.tStride_W = buff->n_stride;
             tSrcFrame.nSize = buff->n_size;
 
-            libaxdl_inference(gNpuModels, &tSrcFrame, &mResults);
+            axdl_inference(gNpuModels, &tSrcFrame, &mResults);
             pthread_mutex_lock(&g_forward_mutex);
             if (g_result_forward.size()) g_result_forward.pop();
             g_result_forward.push(mResults);
@@ -413,7 +425,7 @@ CAMERA_T _g_m3axpi_::gCams[MAX_CAMERAS];
 pthread_mutex_t _g_m3axpi_::g_forward_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t _g_m3axpi_::g_capture_mutex = PTHREAD_MUTEX_INITIALIZER;
 cv::Mat _g_m3axpi_::g_capture, _g_m3axpi_::g_display;
-std::queue<libaxdl_results_t> _g_m3axpi_::g_result_forward;
+std::queue<axdl_results_t> _g_m3axpi_::g_result_forward;
 pipeline_t _g_m3axpi_::pipelines[4];
 int _g_m3axpi_::bRunJoint = 0, _g_m3axpi_::bRunState = 0;
 void *_g_m3axpi_::gNpuModels = NULL;
@@ -422,13 +434,12 @@ int _g_m3axpi_::sUserHeight = 180;
 
 static void g_m3axpi_camera(int CameraWidth, int CameraHeight, int SysCase, int HdrMode, int FrameRate)
 {
-    bool need_init = (g_m3axpi.sUserWidth != CameraWidth || g_m3axpi.sUserHeight != CameraHeight || g_m3axpi.eSysCase != (COMMON_SYS_CASE_E)SysCase);
     g_m3axpi.sUserWidth = CameraWidth;
     g_m3axpi.sUserHeight = CameraHeight;
     g_m3axpi.eSysCase = (COMMON_SYS_CASE_E)SysCase;
     g_m3axpi.eHdrMode = (AX_SNS_HDR_MODE_E)HdrMode;
     g_m3axpi.sFramerate = FrameRate;
-    if (need_init) g_m3axpi.init();
+    g_m3axpi.init();
 }
 
 static void g_m3axpi_load(py::str CfgPath)
@@ -464,12 +475,12 @@ static void g_m3axpi_display(py::list img)
     cv::Mat src(rows, cols, type, (void *)tmp.c_str());
 
     auto osd_pipe = &g_m3axpi.pipelines[0];
-    libaxdl_canvas_t img_overlay = { src.data, src.cols, src.rows, channel };
+    axdl_canvas_t img_overlay = { src.data, src.cols, src.rows, channel };
     AX_IVPS_RGN_DISP_GROUP_S tDisp;
 
-    if (channel == 4) 
+    if (channel == 4)
     {
-        for (uint32_t *rgba2abgr = (uint32_t *)src.data, i = 0, s = src.cols*src.rows; i != s; i++) 
+        for (uint32_t *rgba2abgr = (uint32_t *)src.data, i = 0, s = src.cols*src.rows; i != s; i++)
         {
             rgba2abgr[i] = __builtin_bswap32(rgba2abgr[i]);
         }
@@ -514,7 +525,7 @@ static py::list g_m3axpi_capture()
     if (!g_m3axpi.bRunState) return py::list();
     py::list return_img;
     pthread_mutex_lock(&g_m3axpi.g_capture_mutex);
-    if (g_m3axpi.g_capture.rows) 
+    if (g_m3axpi.g_capture.rows)
     {
         return_img.append(g_m3axpi.g_capture.rows);
         return_img.append(g_m3axpi.g_capture.cols);
@@ -533,7 +544,7 @@ static py::dict g_m3axpi_forward()
     if (g_m3axpi.bRunState && g_m3axpi.bRunJoint && g_m3axpi.g_result_forward.size())
     {
         pthread_mutex_lock(&g_m3axpi.g_forward_mutex);
-        libaxdl_results_t res = g_m3axpi.g_result_forward.front();
+        axdl_results_t res = g_m3axpi.g_result_forward.front();
         g_m3axpi.g_result_forward.pop();
         pthread_mutex_unlock(&g_m3axpi.g_forward_mutex);
 

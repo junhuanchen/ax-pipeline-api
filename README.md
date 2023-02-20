@@ -64,7 +64,7 @@ while True:
 
 ```
 
-- [tests/test_m3axpi.py](tests/test_m3axpi.py)
+- [tests/test_m3axpi_module.py](tests/test_m3axpi_module.py)
 
 ## old ctypes code
 
@@ -159,13 +159,17 @@ https://user-images.githubusercontent.com/32978053/204150065-6977de65-423a-4895-
 - Package with many inputs and outputs
 
 ```bash
-libsample_h264_ivps_joint_vo_sipy.so            # input h264 video to ivps joint output screen vo
-libsample_v4l2_user_ivps_joint_vo_sipy.so       # input v4l2 /dev/videoX to ivps joint output screen vo
-libsample_rtsp_ivps_joint_rtsp_vo_sipy.so       # input video from rtsp to ivps joint output rtsp and screen vo
-libsample_vin_ivps_joint_vo_sipy.so             # input mipi sensor to ivps joint output screen vo
-libsample_vin_ivps_joint_venc_rtsp_sipy.so      # input mipi sensor to ivps joint output rtsp
-libsample_vin_ivps_joint_venc_rtsp_vo_sipy.so   # input mipi sensor to ivps joint output rtsp and screen vo
-libsample_vin_ivps_joint_vo_h265_sipy.so        # input mipi sensor to ivps joint output screen vo and save h265 video file
+libsample_h264_ivps_joint_vo_sipy.so                # input h264 video to ivps joint output screen vo
+libsample_v4l2_user_ivps_joint_vo_sipy.so           # input v4l2 /dev/videoX to ivps joint output screen vo
+libsample_rtsp_ivps_joint_rtsp_vo_sipy.so           # input video from rtsp to ivps joint output rtsp and screen vo
+libsample_vin_ivps_joint_vo_sipy.so                 # input mipi sensor to ivps joint output screen vo
+libsample_vin_ivps_joint_venc_rtsp_sipy.so          # input mipi sensor to ivps joint output rtsp
+libsample_vin_ivps_joint_venc_rtsp_vo_sipy.so       # input mipi sensor to ivps joint output rtsp and screen vo
+libsample_vin_ivps_joint_vo_h265_sipy.so            # input mipi sensor to ivps joint output screen vo and save h265 video file
+libsample_multi_rtsp_ivps_joint_multi_rtsp_sipy.so  # input multi rtsp video to ivps joint output multi rtsp video
+libsample_rtsp_ivps_joint_rtsp_sipy.so              # input video from rtsp to ivps joint output rtsp
+libsample_rtsp_ivps_joint_rtsp_vo_sipy.so           # input video from rtsp to ivps joint output rtsp and screen vo
+libsample_rtsp_ivps_joint_vo_sipy.so                # input video from rtsp to ivps joint output screen vo
 ```
 
 ### change ai model
