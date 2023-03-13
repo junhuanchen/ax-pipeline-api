@@ -429,8 +429,8 @@ std::queue<axdl_results_t> _g_m3axpi_::g_result_forward;
 pipeline_t _g_m3axpi_::pipelines[4];
 int _g_m3axpi_::bRunJoint = 0, _g_m3axpi_::bRunState = 0;
 void *_g_m3axpi_::gNpuModels = NULL;
-int _g_m3axpi_::sUserWidth = 320;
-int _g_m3axpi_::sUserHeight = 180;
+int _g_m3axpi_::sUserWidth = 640;
+int _g_m3axpi_::sUserHeight = 360;
 
 static void g_m3axpi_camera(int CameraWidth, int CameraHeight, int SysCase, int HdrMode, int FrameRate)
 {
@@ -662,7 +662,7 @@ PYBIND11_MODULE(m3axpi, m) {
 
     m.def("load", &g_m3axpi_load, py::arg("CfgPath"));
 
-    m.def("camera", &g_m3axpi_camera, py::arg("CameraWidth") = 320, py::arg("CameraHeight") = 180, py::arg("SysCase") = 0, py::arg("HdrMode") = 1, py::arg("FrameRate") = 30);
+    m.def("camera", &g_m3axpi_camera, py::arg("CameraWidth") = 640, py::arg("CameraHeight") = 360, py::arg("SysCase") = 0, py::arg("HdrMode") = 1, py::arg("FrameRate") = 30);
 
     m.def("display", &g_m3axpi_display, py::arg("img") = py::list());
 
