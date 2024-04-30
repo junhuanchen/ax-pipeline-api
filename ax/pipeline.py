@@ -1,5 +1,5 @@
 
-version='1.1.3'
+version='1.1.4'
 
 import os
 import ctypes
@@ -93,12 +93,15 @@ class axdl_point_t(ctypes.Structure):
     _fields_ = [
         ("x", ctypes.c_float),
         ("y", ctypes.c_float),
+        ("score", ctypes.c_float),
     ]
 
 class axdl_mat_t(ctypes.Structure):
     _fields_ = [
         ("w", ctypes.c_int),
         ("h", ctypes.c_int),
+        ("c", ctypes.c_int),
+        ("s", ctypes.c_int),
         ("data", ctypes.POINTER(ctypes.c_uint8)),
     ]
 
@@ -115,12 +118,14 @@ class axdl_object_t(ctypes.Structure):
         ("mFaceFeat", axdl_mat_t),
         ("label", ctypes.c_int),
         ("prob", ctypes.c_float),
+        ("track_id", ctypes.c_long),
         ("objname", ctypes.c_char*20),
     ]
 
 class axdl_results_t(ctypes.Structure):
     _fields_ = [
         ("mModelType", ctypes.c_int),
+        ("bObjTrack", ctypes.c_int),
         ("nObjSize", ctypes.c_int),
         ("mObjects", axdl_object_t*64),
         ("bPPHumSeg", ctypes.c_int),
@@ -134,6 +139,12 @@ class axdl_results_t(ctypes.Structure):
         ("noFps", ctypes.c_int),
     ]
 
+class tStrides(ctypes.Union):
+    _fields_ = [("tStride_H", ctypes.c_int),
+                ("tStride_W", ctypes.c_int),
+                ("tStride_C", ctypes.c_int),
+    ]
+
 class axdl_image_t(ctypes.Structure):
     _fields_ = [
         ("pPhy", ctypes.c_ulonglong),
@@ -142,9 +153,7 @@ class axdl_image_t(ctypes.Structure):
         ("nWidth", ctypes.c_uint),
         ("nHeight", ctypes.c_uint),
         ("eDtype", ctypes.c_int),
-        ("tStride_H", ctypes.c_int),
-        ("tStride_W", ctypes.c_int),
-        ("tStride_C", ctypes.c_int),
+        ("unnamed", tStrides),
     ]
 
 def _result_callback(frame, result):
@@ -157,6 +166,10 @@ def _result_callback(frame, result):
             obj = {}
             obj["label"] = res.mObjects[i].label
             obj["prob"] = res.mObjects[i].prob
+            
+            if res.bObjTrack:
+                obj["track_id"] = res.mObjects[i].track_id
+
             obj["objname"] = res.mObjects[i].objname
             obj["bbox"] = {
                 "x" : res.mObjects[i].bbox.x,
@@ -196,6 +209,8 @@ def _result_callback(frame, result):
                 }
             data["mObjects"].append(obj)
         data["nObjSize"] = res.nObjSize
+        data["bObjTrack"] = res.bObjTrack
+        data["niFps"] = res.niFps
     ## There is a problem taking out the mask data ##
     if res.bPPHumSeg:
         data["bPPHumSeg"] = res.bPPHumSeg
