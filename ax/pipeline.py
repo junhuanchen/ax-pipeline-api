@@ -93,12 +93,15 @@ class axdl_point_t(ctypes.Structure):
     _fields_ = [
         ("x", ctypes.c_float),
         ("y", ctypes.c_float),
+        ("score", ctypes.c_float),
     ]
 
 class axdl_mat_t(ctypes.Structure):
     _fields_ = [
         ("w", ctypes.c_int),
         ("h", ctypes.c_int),
+        ("c", ctypes.c_int),
+        ("s", ctypes.c_int),
         ("data", ctypes.POINTER(ctypes.c_uint8)),
     ]
 
@@ -115,12 +118,14 @@ class axdl_object_t(ctypes.Structure):
         ("mFaceFeat", axdl_mat_t),
         ("label", ctypes.c_int),
         ("prob", ctypes.c_float),
+        ("track_id", ctypes.c_long),
         ("objname", ctypes.c_char*20),
     ]
 
 class axdl_results_t(ctypes.Structure):
     _fields_ = [
         ("mModelType", ctypes.c_int),
+        ("bObjTrack", ctypes.c_int),
         ("nObjSize", ctypes.c_int),
         ("mObjects", axdl_object_t*64),
         ("bPPHumSeg", ctypes.c_int),
