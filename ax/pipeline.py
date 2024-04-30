@@ -158,7 +158,6 @@ def _result_callback(frame, result):
     data = {}
     if res.nObjSize:
         data["mObjects"] = []
-        print(res.nObjSize)
         for i in range(res.nObjSize):
             obj = {}
             obj["label"] = res.mObjects[i].label
