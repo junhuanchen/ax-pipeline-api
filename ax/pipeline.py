@@ -27,6 +27,7 @@ class pipeline_event(threading.Thread):
     def run(self):
         config = self._source["config"]
         self._source["lib"] = ctypes.CDLL(self._source["path"])
+        
         CB_RESULT = ctypes.CFUNCTYPE(
             ctypes.c_int,
             ctypes.c_void_p,
@@ -36,6 +37,7 @@ class pipeline_event(threading.Thread):
         self._source["lib"].register_result_callback.argtypes = [CB_RESULT]
         self._source["lib"].register_result_callback.restype = ctypes.c_int
         ret = self._source["lib"].register_result_callback(cb_result)
+        
         CB_DISPLAY = ctypes.CFUNCTYPE(
             ctypes.c_int,
             ctypes.c_int,
@@ -47,6 +49,20 @@ class pipeline_event(threading.Thread):
         self._source["lib"].register_display_callback.argtypes = [CB_DISPLAY]
         self._source["lib"].register_display_callback.restype = ctypes.c_int
         ret = self._source["lib"].register_display_callback(cb_display)
+
+        CB_FRAME = ctypes.CFUNCTYPE(
+            ctypes.c_int,
+            ctypes.c_int,
+            ctypes.c_int,
+            ctypes.c_int,
+            ctypes.c_void_p,           
+        )
+
+        cb_frame = CB_FRAME(_frame_callback)
+        self._source["lib"].register_frame_callback.argtypes = [CB_FRAME]
+        self._source["lib"].register_frame_callback.restype = ctypes.c_int
+        ret = self._source["lib"].register_frame_callback(cb_frame)
+
         main_msg = (ctypes.c_char_p * len(config))()
         for i in range(len(config)):
             main_msg[i] = bytes(config[i], encoding="iso-8859-1")
@@ -244,12 +260,23 @@ def _result_callback(frame, result):
         data['time'] = time.time()
         _source["queue"].append(data)
         # print(data)
+    
+    return 0
+
+def _frame_callback(height, width, channel, data):
+    #print("_frame_callback")
+    #print(height, width, channel, data)
+    if data:
+       _source["camera"] = _image(width, height, "BGR", ctypes.string_at(data, width * height * channel)) 
+        
+    '''
     if _source["input"]:
         img = ctypes.cast(frame, ctypes.POINTER(axdl_image_t)).contents
         if img.eDtype > 2: # is axdl_color_space_bgr(3) or axdl_color_space_rgb(4)
             _source["camera"] = _image(img.nWidth, img.nHeight, "RGB", ctypes.string_at(img.pVir, img.nWidth * img.nHeight * 3))
         else:
             _source["input"] = False
+    '''
     return 0
 
 def _display_callback(height, width, mode, data):
@@ -269,6 +296,9 @@ def result():
     if _source["queue"] and len(_source["queue"]):
         return _source["queue"].popleft()
     return None
+
+def read_frame():
+    return _source["camera"]
 
 def drop():
     if _source["thread"]:
