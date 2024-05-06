@@ -1,5 +1,5 @@
 
-version='1.1.3'
+version='1.1.4'
 
 import os
 import ctypes
@@ -27,6 +27,7 @@ class pipeline_event(threading.Thread):
     def run(self):
         config = self._source["config"]
         self._source["lib"] = ctypes.CDLL(self._source["path"])
+        
         CB_RESULT = ctypes.CFUNCTYPE(
             ctypes.c_int,
             ctypes.c_void_p,
@@ -36,6 +37,7 @@ class pipeline_event(threading.Thread):
         self._source["lib"].register_result_callback.argtypes = [CB_RESULT]
         self._source["lib"].register_result_callback.restype = ctypes.c_int
         ret = self._source["lib"].register_result_callback(cb_result)
+        
         CB_DISPLAY = ctypes.CFUNCTYPE(
             ctypes.c_int,
             ctypes.c_int,
@@ -47,6 +49,20 @@ class pipeline_event(threading.Thread):
         self._source["lib"].register_display_callback.argtypes = [CB_DISPLAY]
         self._source["lib"].register_display_callback.restype = ctypes.c_int
         ret = self._source["lib"].register_display_callback(cb_display)
+
+        CB_FRAME = ctypes.CFUNCTYPE(
+            ctypes.c_int,
+            ctypes.c_int,
+            ctypes.c_int,
+            ctypes.c_int,
+            ctypes.c_void_p,           
+        )
+
+        cb_frame = CB_FRAME(_frame_callback)
+        self._source["lib"].register_frame_callback.argtypes = [CB_FRAME]
+        self._source["lib"].register_frame_callback.restype = ctypes.c_int
+        ret = self._source["lib"].register_frame_callback(cb_frame)
+
         main_msg = (ctypes.c_char_p * len(config))()
         for i in range(len(config)):
             main_msg[i] = bytes(config[i], encoding="iso-8859-1")
@@ -139,6 +155,12 @@ class axdl_results_t(ctypes.Structure):
         ("noFps", ctypes.c_int),
     ]
 
+class tStrides(ctypes.Union):
+    _fields_ = [("tStride_H", ctypes.c_int),
+                ("tStride_W", ctypes.c_int),
+                ("tStride_C", ctypes.c_int),
+    ]
+
 class axdl_image_t(ctypes.Structure):
     _fields_ = [
         ("pPhy", ctypes.c_ulonglong),
@@ -147,9 +169,7 @@ class axdl_image_t(ctypes.Structure):
         ("nWidth", ctypes.c_uint),
         ("nHeight", ctypes.c_uint),
         ("eDtype", ctypes.c_int),
-        ("tStride_H", ctypes.c_int),
-        ("tStride_W", ctypes.c_int),
-        ("tStride_C", ctypes.c_int),
+        ("unnamed", tStrides),
     ]
 
 def _result_callback(frame, result):
@@ -162,6 +182,10 @@ def _result_callback(frame, result):
             obj = {}
             obj["label"] = res.mObjects[i].label
             obj["prob"] = res.mObjects[i].prob
+            
+            if res.bObjTrack:
+                obj["track_id"] = res.mObjects[i].track_id
+
             obj["objname"] = res.mObjects[i].objname
             obj["bbox"] = {
                 "x" : res.mObjects[i].bbox.x,
@@ -201,6 +225,8 @@ def _result_callback(frame, result):
                 }
             data["mObjects"].append(obj)
         data["nObjSize"] = res.nObjSize
+        data["bObjTrack"] = res.bObjTrack
+        data["niFps"] = res.niFps
     ## There is a problem taking out the mask data ##
     if res.bPPHumSeg:
         data["bPPHumSeg"] = res.bPPHumSeg
@@ -234,12 +260,23 @@ def _result_callback(frame, result):
         data['time'] = time.time()
         _source["queue"].append(data)
         # print(data)
+    
+    return 0
+
+def _frame_callback(height, width, channel, data):
+    #print("_frame_callback")
+    #print(height, width, channel, data)
+    if data:
+       _source["camera"] = _image(width, height, "BGR", ctypes.string_at(data, width * height * channel)) 
+        
+    '''
     if _source["input"]:
         img = ctypes.cast(frame, ctypes.POINTER(axdl_image_t)).contents
         if img.eDtype > 2: # is axdl_color_space_bgr(3) or axdl_color_space_rgb(4)
             _source["camera"] = _image(img.nWidth, img.nHeight, "RGB", ctypes.string_at(img.pVir, img.nWidth * img.nHeight * 3))
         else:
             _source["input"] = False
+    '''
     return 0
 
 def _display_callback(height, width, mode, data):
@@ -259,6 +296,9 @@ def result():
     if _source["queue"] and len(_source["queue"]):
         return _source["queue"].popleft()
     return None
+
+def read_frame():
+    return _source["camera"]
 
 def drop():
     if _source["thread"]:

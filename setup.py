@@ -38,7 +38,7 @@ ext_modules = [
             ],
             sources= ["src/m3axpi.cpp"],
             libraries=[
-                "opencv_videoio", "opencv_highgui", "opencv_core", "opencv_imgproc", "opencv_imgcodecs", "opencv_freetype", "opencv_freetype", "sample_vin_ivps_joint_vo_sipy"
+                "opencv_videoio", "opencv_highgui", "opencv_core", "opencv_imgproc", "opencv_imgcodecs", "opencv_freetype", "opencv_freetype", "sample_vin_ivps_npu_vo_sipy"
             ],
             extra_compile_args=['-std=c++11', '-std=gnu++11'],
             extra_link_args=[
